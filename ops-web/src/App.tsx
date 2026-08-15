@@ -59,7 +59,7 @@ function Login({
   return (
     <div className="auth">
       <form className="auth-card" onSubmit={(e) => void submit(e)}>
-        <img src="/logo-gn.png" alt="" width={48} height={48} style={{ borderRadius: '50%' }} />
+        <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={48} height={48} style={{ borderRadius: '50%' }} />
         <h1>GlobalNetwork</h1>
         <p className="muted">Staff dashboard — manage subscriptions, extend days, chat.</p>
         <input type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -112,7 +112,7 @@ function Shell({ orgId, email, signOut }: { orgId: string; email: string; signOu
     <div className="shell">
       <aside className="side">
         <div className="brand">
-          <img src="/logo-gn.png" alt="" />
+          <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" />
           GlobalNetwork
         </div>
         <NavLink to="/" end>
