@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { FirebaseError } from 'firebase/app'
+import { googleAuthErrorMessage } from './googleAuth'
 import { useAuth } from './authContext'
 import { ArchitectureTree, buildArchNodes } from './ArchitectureTree'
 import { AccountsPanel } from './AccountsPanel'
@@ -117,11 +117,7 @@ function TcdLogin({
     try {
       await signInWithGoogle()
     } catch (err) {
-      if (err instanceof FirebaseError && err.code === 'auth/account-exists-with-different-credential') {
-        setError('This email already has a password account — sign in with email + password instead.')
-      } else {
-        setError(err instanceof Error ? err.message : 'Google sign-in failed')
-      }
+      setError(googleAuthErrorMessage(err))
     } finally {
       setBusy(false)
     }

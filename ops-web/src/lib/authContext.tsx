@@ -7,16 +7,15 @@ import {
   type ReactNode,
 } from 'react'
 import {
-  GoogleAuthProvider,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  signInWithPopup,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, COL, db, FIREBASE_CONFIGURED } from './firebase'
 import { isProjectAdmin } from './admin'
+import { completeGoogleRedirect, signInWithGoogle as startGoogleSignIn } from './googleAuth'
 
 type AuthContextValue = {
   configured: boolean
@@ -47,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
+    void completeGoogleRedirect(auth).catch(() => undefined)
     return onAuthStateChanged(auth, async (next) => {
       setUser(next)
       setBlockedMessage(null)
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signInWithGoogle: async () => {
         if (!auth) throw new Error('Firebase is not configured for this build.')
-        await signInWithPopup(auth, new GoogleAuthProvider())
+        await startGoogleSignIn(auth)
       },
       signOut: async () => {
         if (auth) await firebaseSignOut(auth)

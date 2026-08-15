@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/authContext'
+import { googleAuthErrorMessage } from './lib/googleAuth'
 import * as repo from './lib/repo'
 import type { ChatMessage, Customer, IssueTicket, Plan } from './lib/types'
 
@@ -56,6 +57,14 @@ function Login({
       setError(err instanceof Error ? err.message : 'Sign in failed')
     }
   }
+  const onGoogle = async () => {
+    setError(null)
+    try {
+      await signInWithGoogle()
+    } catch (err) {
+      setError(googleAuthErrorMessage(err))
+    }
+  }
   return (
     <div className="auth">
       <form className="auth-card" onSubmit={(e) => void submit(e)}>
@@ -68,7 +77,7 @@ function Login({
         <button className="btn btn-primary" type="submit">
           Sign in
         </button>
-        <button className="btn btn-ghost" type="button" onClick={() => void signInWithGoogle()}>
+        <button className="btn btn-ghost" type="button" onClick={() => void onGoogle()}>
           Continue with Google
         </button>
       </form>
