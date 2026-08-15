@@ -11,7 +11,10 @@ export default function App() {
       <div className="auth">
         <div className="auth-card">
           <h1>Ops not configured</h1>
-          <p className="muted">Set VITE_FIREBASE_* on the Firebase Hosting build.</p>
+          <p className="muted">
+            This GitHub Pages build is missing Firebase keys. Add <code>VITE_FIREBASE_*</code> secrets on
+            the repo and redeploy Pages.
+          </p>
         </div>
       </div>
     )
