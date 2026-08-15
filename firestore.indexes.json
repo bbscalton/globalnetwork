@@ -17,22 +17,12 @@
       ]
     },
     {
-      "collectionGroup": "chatMessages",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [{ "fieldPath": "createdAtMs", "order": "DESCENDING" }]
-    },
-    {
       "collectionGroup": "issues",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAtMs", "order": "DESCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "payments",
-      "queryScope": "COLLECTION",
-      "fields": [{ "fieldPath": "atMs", "order": "DESCENDING" }]
     }
   ],
   "fieldOverrides": []
