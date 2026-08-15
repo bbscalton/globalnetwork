@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function adminEmail() {
+      return signedIn() && request.auth.token.email == 'neuereatec@gmail.com';
+    }
+    function staffDoc() {
+      return signedIn() && exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid));
+    }
+    function isStaff() {
+      return adminEmail() || staffDoc();
+    }
+    function customerOwns(customerId) {
+      return signedIn() && (
+        get(/databases/$(database)/documents/customers/$(customerId)).data.uid == request.auth.uid
+        || customerId == request.auth.uid
+      );
+    }
+
+    match /staffProfiles/{uid} {
+      allow read: if isStaff() || (signedIn() && uid == request.auth.uid);
+      allow write: if adminEmail();
+    }
+
+    match /orgs/{orgId} {
+      allow read: if isStaff();
+      allow write: if adminEmail();
+    }
+
+    match /plans/{planId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    match /adminConfig/{doc} {
+      allow read: if isStaff();
+      allow write: if adminEmail();
+    }
+
+    match /adminAuditLogs/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    match /customers/{customerId} {
+      allow read: if isStaff() || customerOwns(customerId)
+        || (signedIn() && resource.data.email == request.auth.token.email);
+      allow create: if isStaff();
+      allow update: if (isStaff()
+          && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['paidUntilMs', 'graceUntilMs', 'status', 'balanceDue', 'paidAmount']))
+        || (customerOwns(customerId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenMs', 'fcmToken', 'uid']));
+      allow delete: if adminEmail();
+
+      match /payments/{payId} {
+        allow read: if isStaff() || customerOwns(customerId);
+        allow write: if false;
+      }
+
+      match /chatMessages/{msgId} {
+        allow read: if isStaff() || customerOwns(customerId);
+        allow create: if (isStaff() || customerOwns(customerId))
+          && request.resource.data.keys().hasAll(['from', 'text', 'createdAtMs']);
+        allow update, delete: if isStaff();
+      }
+
+      match /issues/{issueId} {
+        allow read: if isStaff() || customerOwns(customerId);
+        allow create: if isStaff() || customerOwns(customerId);
+        allow update: if isStaff() || customerOwns(customerId);
+        allow delete: if isStaff();
+      }
+    }
+  }
+}

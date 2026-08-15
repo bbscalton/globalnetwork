@@ -1,0 +1,27 @@
+{
+  "name": "globalnetwork-media",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-15",
+  "vars": {
+    "FIREBASE_PROJECT_ID": "globalnetwork-isp"
+  },
+  "r2_buckets": [
+    {
+      "binding": "MEDIA_BUCKET",
+      "bucket_name": "globalnetwork-media"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "globalnetwork-ops",
+      "database_id": "REPLACE_WITH_D1_ID"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "EDGE_CACHE",
+      "id": "REPLACE_WITH_KV_ID"
+    }
+  ]
+}

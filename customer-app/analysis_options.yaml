@@ -1,0 +1,2 @@
+analysis_options:
+  include: package:flutter_lints/flutter.yaml
