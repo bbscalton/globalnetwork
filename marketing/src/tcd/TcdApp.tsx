@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { googleAuthErrorMessage } from './googleAuth'
+import { consumeGoogleAuthError, googleAuthErrorMessage } from './googleAuth'
 import { useAuth } from './authContext'
 import { ArchitectureTree, buildArchNodes } from './ArchitectureTree'
 import { AccountsPanel } from './AccountsPanel'
@@ -63,6 +63,24 @@ export function TcdApp() {
 
   if (!user) return <TcdLogin signIn={signIn} signInWithGoogle={signInWithGoogle} />
 
+  if (!isStaff && !isAdmin) {
+    return (
+      <div className="tcd-auth-wrap">
+        <div className="tcd-auth-card">
+          <p className="eyebrow eyebrow-on-dark">GlobalNetwork Ops</p>
+          <h1>Staff only</h1>
+          <p className="muted on-dark">
+            Signed in as {user.email || 'this Google account'}. Use neuereatec@gmail.com, or ask that admin to add
+            a staffProfiles/{user.uid} document.
+          </p>
+          <button className="btn btn-ghost-on-dark" type="button" onClick={() => void signOut()}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (blockedMessage) {
     return (
       <div className="tcd-auth-wrap">
@@ -95,7 +113,7 @@ function TcdLogin({
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(() => consumeGoogleAuthError())
   const [busy, setBusy] = useState(false)
 
   const onSubmit = async (e: FormEvent) => {
@@ -147,8 +165,11 @@ function TcdLogin({
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
         <button className="btn btn-ghost-on-dark" type="button" disabled={busy} onClick={() => void onGoogle()}>
-          Continue with Google
+          {busy ? 'Opening Google…' : 'Continue with Google'}
         </button>
+        <p className="muted on-dark small">
+          Sign in with neuereatec@gmail.com for admin. Allow popups for this site.
+        </p>
       </form>
     </div>
   )

@@ -1,5 +1,12 @@
-import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { initializeApp, type FirebaseApp } from 'firebase/app'
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+  type Auth,
+} from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
 
@@ -19,8 +26,19 @@ const firebaseConfig = {
   measurementId: readEnv('VITE_FIREBASE_MEASUREMENT_ID') || undefined,
 }
 
+function createAuth(firebaseApp: FirebaseApp): Auth {
+  try {
+    return initializeAuth(firebaseApp, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    })
+  } catch {
+    return getAuth(firebaseApp)
+  }
+}
+
 export const app = FIREBASE_CONFIGURED ? initializeApp(firebaseConfig) : null
-export const auth = app ? getAuth(app) : null
+export const auth = app ? createAuth(app) : null
 export const db = app ? getFirestore(app) : null
 export const functions = app ? getFunctions(app, 'us-central1') : null
 

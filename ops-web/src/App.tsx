@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/authContext'
-import { googleAuthErrorMessage } from './lib/googleAuth'
+import { consumeGoogleAuthError, googleAuthErrorMessage } from './lib/googleAuth'
 import * as repo from './lib/repo'
 import type { ChatMessage, Customer, IssueTicket, Plan } from './lib/types'
 
@@ -27,7 +27,10 @@ export default function App() {
       <div className="auth">
         <div className="auth-card">
           <h1>Staff only</h1>
-          <p className="muted">Ask neuereatec@gmail.com to add a staffProfiles/{'{uid}'} document.</p>
+          <p className="muted">
+            Signed in as {user.email || 'this Google account'}. Ask neuereatec@gmail.com to add a staffProfiles/
+            {user.uid} document, or sign in with that admin Google account.
+          </p>
           <button className="btn btn-ghost" type="button" onClick={() => void signOut()}>
             Sign out
           </button>
@@ -47,22 +50,29 @@ function Login({
 }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(() => consumeGoogleAuthError())
+  const [busy, setBusy] = useState(false)
   const submit = async (e: FormEvent) => {
     e.preventDefault()
+    setBusy(true)
     setError(null)
     try {
       await signIn(email.trim(), password)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed')
+    } finally {
+      setBusy(false)
     }
   }
   const onGoogle = async () => {
+    setBusy(true)
     setError(null)
     try {
       await signInWithGoogle()
     } catch (err) {
       setError(googleAuthErrorMessage(err))
+    } finally {
+      setBusy(false)
     }
   }
   return (
@@ -74,12 +84,15 @@ function Login({
         <input type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="password" required minLength={6} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p className="fail">{error}</p>}
-        <button className="btn btn-primary" type="submit">
-          Sign in
+        <button className="btn btn-primary" type="submit" disabled={busy}>
+          {busy ? 'Signing in…' : 'Sign in'}
         </button>
-        <button className="btn btn-ghost" type="button" onClick={() => void onGoogle()}>
-          Continue with Google
+        <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void onGoogle()}>
+          {busy ? 'Opening Google…' : 'Continue with Google'}
         </button>
+        <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+          Sign in with <strong>neuereatec@gmail.com</strong> for admin. Allow popups for this site.
+        </p>
       </form>
     </div>
   )

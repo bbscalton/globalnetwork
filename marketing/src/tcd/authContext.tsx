@@ -39,32 +39,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null)
   const [orgId, setOrgId] = useState<string | null>(null)
 
-  const isAdmin = isProjectAdmin(user?.email)
+  const isAdmin = isProjectAdmin(user)
 
   useEffect(() => {
     if (!FIREBASE_CONFIGURED || !auth) {
       setLoading(false)
       return
     }
-    void completeGoogleRedirect(auth).catch(() => undefined)
-    return onAuthStateChanged(auth, async (next) => {
-      setUser(next)
-      setBlockedMessage(null)
-      if (next && db) {
-        const staff = await getDoc(doc(db, COL.staffProfiles, next.uid)).catch(() => null)
-        const staffOk = isProjectAdmin(next.email) || staff?.exists() === true
-        setIsStaff(staffOk)
-        setOrgId((staff?.data()?.orgId as string | undefined) ?? 'globalnetwork')
-        if (staff?.data()?.blocked === true) {
-          setBlockedMessage('This staff account is suspended.')
-          if (auth) await firebaseSignOut(auth)
+    let cancelled = false
+    let unsub = () => {}
+    void (async () => {
+      await completeGoogleRedirect(auth)
+      if (cancelled) return
+      unsub = onAuthStateChanged(auth, async (next) => {
+        setBlockedMessage(null)
+        if (!next) {
+          setUser(null)
+          setIsStaff(false)
+          setOrgId(null)
+          setLoading(false)
+          return
         }
-      } else {
-        setIsStaff(false)
-        setOrgId(null)
-      }
-      setLoading(false)
-    })
+        setLoading(true)
+        const admin = isProjectAdmin(next)
+        if (admin) {
+          setIsStaff(true)
+          setOrgId('globalnetwork')
+        }
+        setUser(next)
+        if (db) {
+          const staff = await getDoc(doc(db, COL.staffProfiles, next.uid)).catch(() => null)
+          if (cancelled) return
+          const staffOk = admin || staff?.exists() === true
+          setIsStaff(staffOk)
+          setOrgId((staff?.data()?.orgId as string | undefined) ?? 'globalnetwork')
+          if (staff?.data()?.blocked === true) {
+            setBlockedMessage('This staff account is suspended.')
+            await firebaseSignOut(auth)
+            return
+          }
+        }
+        setLoading(false)
+      })
+    })()
+    return () => {
+      cancelled = true
+      unsub()
+    }
   }, [])
 
   const value = useMemo<AuthContextValue>(
