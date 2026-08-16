@@ -1,26 +1,18 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { DEFAULT_ORG_ID, DEFAULT_PLANS, db, requireAdmin, requireDesk, sendToToken, writeAudit } from "./context";
+import { CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, db, requireOwner, sendToToken, writeAudit } from "./context";
 
 export const ensureOrgDefaults = onCall(async (request) => {
-  const staff = await requireAdmin(request);
+  const owner = await requireOwner(request);
   const orgId = String(request.data?.orgId ?? DEFAULT_ORG_ID);
   const orgRef = db.collection("orgs").doc(orgId);
   await orgRef.set(
     {
       name: "GlobalNetwork",
-      currency: "GYD",
+      currency: CURRENCY,
+      ownerEmail: owner.email,
+      ownerUid: owner.uid,
       updatedAtMs: Date.now(),
-      updatedBy: staff.email,
-    },
-    { merge: true },
-  );
-
-  const staffRef = db.collection("staffProfiles").doc(staff.uid);
-  await staffRef.set(
-    {
-      email: staff.email,
-      orgId,
-      updatedAtMs: Date.now(),
+      updatedBy: owner.email,
     },
     { merge: true },
   );
@@ -30,19 +22,37 @@ export const ensureOrgDefaults = onCall(async (request) => {
     const snap = await ref.get();
     if (!snap.exists) {
       await ref.set({ ...plan, orgId, createdAtMs: Date.now() });
+    } else {
+      await ref.set({ currency: CURRENCY }, { merge: true });
     }
   }
 
   await writeAudit({
     action: "ensure_org_defaults",
-    adminEmail: staff.email,
+    adminEmail: owner.email,
     targetUid: orgId,
   });
   return { ok: true, orgId };
 });
 
+export const registerOwnerDevice = onCall(async (request) => {
+  const owner = await requireOwner(request);
+  const token = String(request.data?.fcmToken ?? "").trim();
+  const orgId = String(request.data?.orgId ?? DEFAULT_ORG_ID);
+  await db.collection("orgs").doc(orgId).set(
+    {
+      ownerEmail: owner.email,
+      ownerUid: owner.uid,
+      ownerFcmToken: token || null,
+      ownerLastSeenMs: Date.now(),
+    },
+    { merge: true },
+  );
+  return { ok: true };
+});
+
 export const savePlan = onCall(async (request) => {
-  const staff = await requireAdmin(request);
+  const owner = await requireOwner(request);
   const name = String(request.data?.name ?? "").trim();
   const days = Number(request.data?.days ?? 0);
   const feeAmount = Number(request.data?.feeAmount ?? 0);
@@ -58,20 +68,20 @@ export const savePlan = onCall(async (request) => {
         name,
         days,
         feeAmount,
-        currency: String(request.data?.currency ?? "GYD"),
+        currency: String(request.data?.currency ?? CURRENCY),
         active: request.data?.active !== false,
         orgId: DEFAULT_ORG_ID,
         updatedAtMs: Date.now(),
-        updatedBy: staff.email,
+        updatedBy: owner.email,
       },
       { merge: true },
     );
-  await writeAudit({ action: "save_plan", adminEmail: staff.email, targetUid: id, detail: name });
+  await writeAudit({ action: "save_plan", adminEmail: owner.email, targetUid: id, detail: name });
   return { ok: true, id };
 });
 
 export const createCustomer = onCall(async (request) => {
-  const staff = await requireDesk(request);
+  const owner = await requireOwner(request);
   const name = String(request.data?.name ?? "").trim();
   if (!name) throw new HttpsError("invalid-argument", "Name is required.");
   const planId = String(request.data?.planId ?? "");
@@ -105,15 +115,15 @@ export const createCustomer = onCall(async (request) => {
     lastSeenMs: 0,
     unreadStaff: 0,
     createdAtMs: Date.now(),
-    createdBy: staff.uid,
+    createdBy: owner.uid,
     uid: null,
   });
-  await writeAudit({ action: "create_customer", adminEmail: staff.email, targetUid: ref.id, detail: name });
+  await writeAudit({ action: "create_customer", adminEmail: owner.email, targetUid: ref.id, detail: name });
   return { customerId: ref.id };
 });
 
 export const extendSubscription = onCall(async (request) => {
-  const staff = await requireDesk(request);
+  const owner = await requireOwner(request);
   const customerId = String(request.data?.customerId ?? "");
   const days = Math.floor(Number(request.data?.days ?? 0));
   const amountPaid = Number(request.data?.amountPaid ?? 0);
@@ -156,14 +166,14 @@ export const extendSubscription = onCall(async (request) => {
       daysGranted: days,
       note,
       atMs: now,
-      byUid: staff.uid,
+      byUid: owner.uid,
     });
     return { paidUntilMs, status, balanceDue };
   });
 
   await writeAudit({
     action: "extend_subscription",
-    adminEmail: staff.email,
+    adminEmail: owner.email,
     targetUid: customerId,
     detail: `${days}d paid ${amountPaid} note=${note}`,
   });
@@ -180,11 +190,11 @@ export const extendSubscription = onCall(async (request) => {
 });
 
 export const suspendCustomer = onCall(async (request) => {
-  const staff = await requireDesk(request);
+  const owner = await requireOwner(request);
   const customerId = String(request.data?.customerId ?? "");
   if (!customerId) throw new HttpsError("invalid-argument", "customerId required.");
   await db.collection("customers").doc(customerId).update({ status: "suspended", updatedAtMs: Date.now() });
-  await writeAudit({ action: "suspend_customer", adminEmail: staff.email, targetUid: customerId });
+  await writeAudit({ action: "suspend_customer", adminEmail: owner.email, targetUid: customerId });
   return { ok: true };
 });
 

@@ -1,10 +1,10 @@
 import * as admin from "firebase-admin";
 import { logger } from "firebase-functions";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
-import { isAssignedRole, parseRole } from "./roles";
 
 export const ADMIN_EMAIL = "neuereatec@gmail.com";
 export const DEFAULT_ORG_ID = "globalnetwork";
+export const CURRENCY = "XCD";
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function getDb(): FirebaseFirestore.Firestore {
@@ -27,28 +27,16 @@ export function requireAuth(request: CallableRequest): { uid: string; email: str
   return { uid, email };
 }
 
-export async function requireStaff(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean; role: string }> {
+export function isOwnerEmail(email: string | undefined | null): boolean {
+  return (email ?? "").trim().toLowerCase() === ADMIN_EMAIL;
+}
+
+export async function requireOwner(request: CallableRequest): Promise<{ uid: string; email: string }> {
   const user = requireAuth(request);
-  const adminUser = user.email.trim().toLowerCase() === ADMIN_EMAIL;
-  if (adminUser) return { ...user, admin: true, role: "admin" };
-  const staff = await db.collection("staffProfiles").doc(user.uid).get();
-  const role = parseRole(staff.get("role"));
-  if (!staff.exists || staff.get("blocked") === true || !isAssignedRole(role)) {
-    throw new HttpsError("permission-denied", "Staff access required.");
+  if (!isOwnerEmail(user.email)) {
+    throw new HttpsError("permission-denied", "Owner access required.");
   }
-  return { ...user, admin: role === "admin", role };
-}
-
-export async function requireDesk(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean; role: string }> {
-  const staff = await requireStaff(request);
-  if (staff.role === "support") throw new HttpsError("permission-denied", "Customer desk role required.");
-  return staff;
-}
-
-export async function requireAdmin(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean; role: string }> {
-  const staff = await requireStaff(request);
-  if (!staff.admin) throw new HttpsError("permission-denied", "Admin only.");
-  return staff;
+  return user;
 }
 
 export async function writeAudit(entry: {
@@ -76,8 +64,14 @@ export async function sendToToken(token: string | undefined, title: string, body
   }
 }
 
+export async function ownerFcmToken(orgId = DEFAULT_ORG_ID): Promise<string | undefined> {
+  const snap = await db.collection("orgs").doc(orgId).get();
+  const token = snap.get("ownerFcmToken");
+  return typeof token === "string" && token ? token : undefined;
+}
+
 export const DEFAULT_PLANS = [
-  { id: "plan-15", name: "15-day", days: 15, feeAmount: 2200, currency: "GYD", active: true },
-  { id: "plan-30", name: "30-day home", days: 30, feeAmount: 4000, currency: "GYD", active: true },
-  { id: "plan-90", name: "90-day", days: 90, feeAmount: 10800, currency: "GYD", active: true },
+  { id: "plan-15", name: "15-day", days: 15, feeAmount: 2200, currency: CURRENCY, active: true },
+  { id: "plan-30", name: "30-day home", days: 30, feeAmount: 4000, currency: CURRENCY, active: true },
+  { id: "plan-90", name: "90-day", days: 90, feeAmount: 10800, currency: CURRENCY, active: true },
 ];

@@ -82,7 +82,7 @@ export function CustomerPage({
         note: text,
       })
       setNote('')
-      return `Service through ${fmtDate(res.paidUntilMs)} · ${res.status} · balance ${repo.formatGyd(res.balanceDue)}`
+      return `Service through ${fmtDate(res.paidUntilMs)} · ${res.status} · balance ${repo.formatEc(res.balanceDue)}`
     })
 
   const send = async (e: FormEvent) => {
@@ -90,7 +90,7 @@ export function CustomerPage({
     if (!draft.trim()) return
     const text = draft.trim()
     setDraft('')
-    await repo.sendChat(customer.id, text, 'staff')
+    await repo.sendChat(customer.id, text, 'owner')
   }
 
   const assignPlan = async (planId: string) => {
@@ -132,10 +132,10 @@ export function CustomerPage({
         <div className="cycle-hero-top">
           <span>Current cycle</span>
           <span>
-            {pct}% remaining · balance {repo.formatGyd(customer.balanceDue)}
+            {pct}% remaining · balance {repo.formatEc(customer.balanceDue)}
           </span>
         </div>
-        <div className="cycle-track lg">
+        <div className="cycle-track lg glow-bar">
           <span style={{ width: `${pct}%` }} />
         </div>
       </div>
@@ -146,7 +146,6 @@ export function CustomerPage({
       <section className="card action-card">
         <div className="card-head">
           <h2>Renew or collect</h2>
-          <span className="muted tiny">extendSubscription — days first, amount second</span>
         </div>
         <div className="quick-renew">
           <button
@@ -155,7 +154,7 @@ export function CustomerPage({
             disabled={busy}
             onClick={() => void extend(customer.planDays || 30, customer.feeAmount, 'Full plan renewal')}
           >
-            Collect full {customer.planDays || 30}d · {repo.formatGyd(customer.feeAmount)}
+            Collect full {customer.planDays || 30}d · {repo.formatEc(customer.feeAmount)}
           </button>
           <button
             className="btn btn-ghost"
@@ -180,7 +179,7 @@ export function CustomerPage({
             <input value={days} onChange={(e) => setDays(e.target.value)} />
           </label>
           <label>
-            Amount paid (GYD)
+            Amount paid (EC$)
             <input value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
           <label>
@@ -209,7 +208,7 @@ export function CustomerPage({
               <option value="">Unassigned</option>
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} · {p.days}d · {repo.formatGyd(p.feeAmount)} {p.active ? '' : '(hidden)'}
+                  {p.name} · {p.days}d · {repo.formatEc(p.feeAmount)} {p.active ? '' : '(hidden)'}
                 </option>
               ))}
             </select>
@@ -247,7 +246,7 @@ export function CustomerPage({
             {payments.map((p) => (
               <li key={p.id}>
                 <span>
-                  <strong>{repo.formatGyd(p.amount)}</strong> · {p.kind} · {p.daysGranted}d
+                  <strong>{repo.formatEc(p.amount)}</strong> · {p.kind} · {p.daysGranted}d
                   {p.note ? <span className="muted"> — {p.note}</span> : null}
                 </span>
                 <span className="muted tiny">{fmtWhen(p.atMs)}</span>
@@ -256,7 +255,7 @@ export function CustomerPage({
             {payments.length === 0 && customer.paidAmount > 0 && (
               <li>
                 <span>
-                  Lifetime collected <strong>{repo.formatGyd(customer.paidAmount)}</strong>
+                  Lifetime collected <strong>{repo.formatEc(customer.paidAmount)}</strong>
                 </span>
               </li>
             )}
@@ -273,7 +272,7 @@ export function CustomerPage({
           <div className="thread">
             {messages.map((m) => (
               <div key={m.id} className={`bubble ${m.from}`}>
-                <span className="muted tiny">{m.from === 'staff' ? 'Desk' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
+                <span className="muted tiny">{m.from === 'owner' ? 'Owner' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
                 <p>{m.text}</p>
               </div>
             ))}
@@ -298,6 +297,13 @@ export function CustomerPage({
               <h3>{issue.title}</h3>
               <p className="muted tiny">{fmtWhen(issue.createdAtMs)}</p>
               <p>{issue.body}</p>
+              <div className="photos">
+                {issue.photoUrls.map((url) => (
+                  <a key={url} href={url} target="_blank" rel="noreferrer">
+                    <img src={url} alt="" />
+                  </a>
+                ))}
+              </div>
               <div className="chips" style={{ marginTop: 8 }}>
                 {(['open', 'in_progress', 'resolved'] as const).map((status) => (
                   <button

@@ -1,3 +1,5 @@
+const OWNER_EMAIL = "neuereatec@gmail.com";
+
 type Env = {
   MEDIA_BUCKET: R2Bucket;
   DB: D1Database;
@@ -122,7 +124,7 @@ async function verifyFirebaseToken(request: Request, env: Env): Promise<{ uid: s
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) return null;
   const apiKey = env.FIREBASE_API_KEY?.trim();
-  if (!apiKey) return { uid: "unverified", email: "" };
+  if (!apiKey) return null;
   const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -132,7 +134,11 @@ async function verifyFirebaseToken(request: Request, env: Env): Promise<{ uid: s
   const json = (await res.json()) as { users?: Array<{ localId?: string; email?: string }> };
   const user = json.users?.[0];
   if (!user?.localId) return null;
-  return { uid: user.localId, email: user.email ?? "" };
+  return { uid: user.localId, email: (user.email ?? "").trim().toLowerCase() };
+}
+
+function isOwner(auth: { email: string } | null): boolean {
+  return Boolean(auth?.email && auth.email === OWNER_EMAIL);
 }
 
 function allowedKey(key: string): boolean {
@@ -158,6 +164,8 @@ export default {
     }
 
     if (path === "/storage-dump") {
+      const dumpAuth = await verifyFirebaseToken(request, env);
+      if (!isOwner(dumpAuth)) return cors({ error: "owner only" }, 403);
       await ensureTables(env);
       const customers: Record<string, { bytes: number; objects: number }> = {};
       let objects = 0;

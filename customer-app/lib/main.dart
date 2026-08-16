@@ -1,6 +1,11 @@
+import 'dart:async';
+
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import 'firebase_options.dart';
 import 'models/customer.dart';
 import 'screens/chat_screen.dart';
 import 'screens/home_screen.dart';
@@ -9,8 +14,6 @@ import 'screens/login_screen.dart';
 import 'services/api.dart';
 import 'theme.dart';
 
-/// Replace with your Firebase flutterfire options, then `flutterfire configure`.
-const firebaseReady = false;
 const r2BaseUrl = String.fromEnvironment(
   'R2_BASE',
   defaultValue: 'https://globalnetwork-media.neuereatec.workers.dev',
@@ -18,21 +21,59 @@ const r2BaseUrl = String.fromEnvironment(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (firebaseReady) {
-    await Firebase.initializeApp();
+  var firebaseOk = kFirebaseOptionsReady;
+  if (firebaseOk) {
+    try {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    } catch (_) {
+      firebaseOk = false;
+    }
   }
-  runApp(const GlobalNetworkApp());
+  runApp(GlobalNetworkApp(firebaseReady: firebaseOk));
 }
 
 class GlobalNetworkApp extends StatelessWidget {
-  const GlobalNetworkApp({super.key});
+  const GlobalNetworkApp({super.key, required this.firebaseReady});
+
+  final bool firebaseReady;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GlobalNetwork',
       theme: GnTheme.dark(),
-      home: const Gate(),
+      home: firebaseReady ? const Gate() : const SetupScreen(),
+    );
+  }
+}
+
+class SetupScreen extends StatelessWidget {
+  const SetupScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/logo-gn.png',
+              width: 96,
+              height: 96,
+              errorBuilder: (_, __, ___) => const Icon(Icons.public, size: 72, color: GnTheme.cyan),
+            ),
+            const SizedBox(height: 16),
+            const Text('GlobalNetwork', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            const Text(
+              'Run `flutterfire configure` in customer-app/, set kFirebaseOptionsReady = true in lib/firebase_options.dart, then rebuild.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -46,56 +87,102 @@ class Gate extends StatefulWidget {
 
 class _GateState extends State<Gate> {
   late final GnApi api;
+  User? user;
   CustomerAccount? account;
-  var tick = 0;
+  String? linkError;
+  var linking = false;
+  StreamSubscription<User?>? _authSub;
+  StreamSubscription<CustomerAccount?>? _customerSub;
 
   @override
   void initState() {
     super.initState();
     api = GnApi(r2BaseUrl: r2BaseUrl);
-    _listen();
-  }
-
-  void _listen() {
-    api.watchCustomer().listen((value) {
+    _authSub = api.authChanges().listen((next) {
       if (!mounted) return;
-      setState(() => account = value);
-      if (value != null) {
-        api.heartbeat(value.id);
+      setState(() {
+        user = next;
+        account = null;
+        linkError = null;
+      });
+      _customerSub?.cancel();
+      if (next != null) {
+        _bindCustomer();
       }
     });
   }
 
   @override
+  void dispose() {
+    _authSub?.cancel();
+    _customerSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _bindCustomer() async {
+    setState(() {
+      linking = true;
+      linkError = null;
+    });
+    try {
+      final id = await api.linkAccount();
+      await _customerSub?.cancel();
+      _customerSub = api.watchCustomer(id).listen((value) {
+        if (!mounted) return;
+        setState(() => account = value);
+        if (value != null) {
+          api.heartbeat(value.id);
+        }
+      });
+    } on FirebaseFunctionsException catch (e) {
+      setState(() {
+        linkError = e.code == 'not-found'
+            ? 'No customer record for this email yet. Ask the owner to create your account on the GlobalNetwork desk.'
+            : (e.message ?? e.code);
+      });
+    } catch (e) {
+      setState(() => linkError = e.toString());
+    } finally {
+      if (mounted) setState(() => linking = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!firebaseReady) {
+    if (user == null) {
+      return LoginScreen(api: api, onReady: () => setState(() {}));
+    }
+    if (linking && account == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (account == null) {
       return Scaffold(
+        appBar: AppBar(title: const Text('GlobalNetwork')),
         body: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset('assets/logo-gn.png', width: 96, height: 96, errorBuilder: (_, __, ___) => const Icon(Icons.public, size: 72, color: GnTheme.cyan)),
+              const Icon(Icons.public, size: 64, color: GnTheme.cyan),
               const SizedBox(height: 16),
-              const Text('GlobalNetwork customer app', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              const Text(
-                'Run `flutterfire configure` in customer-app/, set firebaseReady = true in lib/main.dart, then rebuild.',
+              Text(
+                linkError ?? 'Ask the owner to create your account.',
                 textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () async {
+                  await api.signOut();
+                  setState(() {
+                    user = null;
+                    account = null;
+                  });
+                },
+                child: const Text('Sign out'),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    if (api.user == null) {
-      return LoginScreen(api: api, onReady: () => setState(() => tick++));
-    }
-    if (account == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('GlobalNetwork')),
-        body: const Center(child: Text('No customer record for this email yet. Ask staff to create your account.')),
       );
     }
     return HomeScreen(
@@ -109,8 +196,8 @@ class _GateState extends State<Gate> {
       onSignOut: () async {
         await api.signOut();
         setState(() {
+          user = null;
           account = null;
-          tick++;
         });
       },
     );

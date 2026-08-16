@@ -53,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
                 const Text('GlobalNetwork', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 8),
-                const Text('Check your internet days. Chat with the provider.', textAlign: TextAlign.center),
+                const Text('Check your internet days. Chat with the owner.', textAlign: TextAlign.center),
                 const SizedBox(height: 24),
                 TextField(controller: email, decoration: const InputDecoration(labelText: 'Email'), keyboardType: TextInputType.emailAddress),
                 const SizedBox(height: 12),

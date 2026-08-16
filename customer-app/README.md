@@ -1,19 +1,11 @@
-# GlobalNetwork customer app (Flutter)
+# GlobalNetwork customer app
 
-iOS + Android skeleton for subscribers.
-
-## Screens
-- Login / register (email + password)
-- Home — days remaining, status, balance
-- Chat with the service provider (Firestore)
-- Report issue — camera photo uploaded to Cloudflare R2
+Flutter iOS and Android app for subscribers. The owner manages accounts on the web desk.
 
 ## Setup
-```bash
-flutter pub get
-dart run flutterfire_cli:flutterfire configure
-```
 
-Then in `lib/main.dart` set `firebaseReady = true`.
+1. Run `flutterfire configure` in this folder (Firebase Auth, Firestore, Functions, Messaging).
+2. Set `kFirebaseOptionsReady = true` in `lib/firebase_options.dart`.
+3. The owner must create your customer record (matching email) before you can sign in to see days remaining.
 
-Staff must create a `customers/{id}` record whose `email` matches the signed-in user.
+Ask the owner to extend days if you cannot pay the full fee. Chat and line-issue photos go straight to the desk.

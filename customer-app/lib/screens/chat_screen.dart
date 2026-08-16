@@ -18,7 +18,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Support chat')),
+      appBar: AppBar(title: const Text('Chat with GlobalNetwork')),
       body: Column(
         children: [
           Expanded(
@@ -38,7 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: mine ? GnTheme.cyan.withOpacity(0.25) : GnTheme.card,
+                          color: mine ? GnTheme.cyan.withValues(alpha: 0.25) : GnTheme.card,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Text(m.text),

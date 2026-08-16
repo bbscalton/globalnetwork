@@ -64,9 +64,9 @@ export function Board({
       <header className="desk-hero">
         <div>
           <p className="eyebrow">Today on the network</p>
-          <h1>Customer desk</h1>
+          <h1>Owner desk</h1>
           <p className="muted">
-            Onboard a subscriber, collect a partial fee, grant days, or open the record. Plans are priced in TCD.
+            Onboard a subscriber, collect a partial fee, or grant extra days when they cannot pay the full amount.
           </p>
         </div>
         <button className="btn btn-primary" type="button" onClick={() => setCreating(true)}>
@@ -75,24 +75,24 @@ export function Board({
       </header>
 
       <section className="queue-grid" aria-label="Work queues">
-        <button className="queue-card" type="button" onClick={() => setFilter('due')}>
+        <button className="queue-card gn-glow" type="button" onClick={() => setFilter('due')}>
           <span className="queue-label">Renewals · 3 days</span>
-          <strong>{pulse.dueSoon.length}</strong>
+          <strong className="count-pop">{pulse.dueSoon.length}</strong>
           <span className="muted">{pulse.dueSoon[0]?.name ?? 'Nobody due yet'}</span>
         </button>
-        <button className="queue-card" type="button" onClick={() => setFilter('owed')}>
+        <button className="queue-card gn-glow" type="button" onClick={() => setFilter('owed')}>
           <span className="queue-label">Collections</span>
-          <strong>{pulse.collections.length}</strong>
-          <span className="muted">{repo.formatGyd(pulse.collections.reduce((s, c) => s + (c.balanceDue || 0), 0))} outstanding</span>
+          <strong className="count-pop">{pulse.collections.length}</strong>
+          <span className="muted">{repo.formatEc(pulse.collections.reduce((s, c) => s + (c.balanceDue || 0), 0))} outstanding</span>
         </button>
-        <button className="queue-card" type="button" onClick={() => navigate('/chat')}>
+        <button className="queue-card gn-glow" type="button" onClick={() => navigate('/chat')}>
           <span className="queue-label">Unread chat</span>
-          <strong>{pulse.unread.length}</strong>
+          <strong className={`count-pop ${pulse.unread.length ? 'gn-pulse' : ''}`}>{pulse.unread.length}</strong>
           <span className="muted">{pulse.unread[0]?.name ?? 'Inbox is clear'}</span>
         </button>
-        <button className="queue-card" type="button" onClick={() => navigate('/issues')}>
+        <button className="queue-card gn-glow" type="button" onClick={() => navigate('/issues')}>
           <span className="queue-label">Open tickets</span>
-          <strong>{pulse.openIssues}</strong>
+          <strong className="count-pop">{pulse.openIssues}</strong>
           <span className="muted">{pulse.offline.length} active without a recent heartbeat</span>
         </button>
       </section>
@@ -133,7 +133,7 @@ export function Board({
             {rows.map((c) => {
               const left = repo.daysLeft(c.paidUntilMs, now)
               return (
-                <tr key={c.id} onClick={() => navigate(`/c/${c.id}`)}>
+                <tr key={c.id} className="roster-row" onClick={() => navigate(`/c/${c.id}`)}>
                   <td>
                     <div className="who">
                       <span className="avatar">{initials(c.name)}</span>
@@ -150,7 +150,7 @@ export function Board({
                   </td>
                   <td>
                     <div className="cycle">
-                      <div className="cycle-track" aria-hidden="true">
+                      <div className="cycle-track glow-bar" aria-hidden="true">
                         <span style={{ width: `${cyclePct(c, now)}%` }} />
                       </div>
                       <span className="muted tiny">
@@ -158,7 +158,7 @@ export function Board({
                       </span>
                     </div>
                   </td>
-                  <td className={c.balanceDue > 0 ? 'warn-text' : ''}>{repo.formatGyd(c.balanceDue)}</td>
+                  <td className={c.balanceDue > 0 ? 'warn-text' : ''}>{repo.formatEc(c.balanceDue)}</td>
                 </tr>
               )
             })}
@@ -195,7 +195,7 @@ export function Board({
                 <option value="">Select a package</option>
                 {plans.filter((p) => p.active).map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} · {p.days}d · {repo.formatGyd(p.feeAmount)}
+                    {p.name} · {p.days}d · {repo.formatEc(p.feeAmount)}
                   </option>
                 ))}
               </select>

@@ -1,5 +1,4 @@
 const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
-const TCD = './tcd.html'
 
 export default function App() {
   return (
@@ -15,11 +14,8 @@ export default function App() {
           <a href="#plans">Plans</a>
         </nav>
         <div className="nav-ctas">
-          <a className="btn btn-ghost" href={TCD}>
-            Plan control
-          </a>
           <a className="btn btn-primary" href={OPS}>
-            Customer desk
+            Owner desk
           </a>
         </div>
       </header>
@@ -28,7 +24,7 @@ export default function App() {
         <div className="hero-media" style={{ backgroundImage: 'url(./hero-globe.png)' }} aria-hidden="true" />
         <div className="hero-scrim" aria-hidden="true" />
         <div className="hero-inner">
-          <p className="eyebrow eyebrow-on-dark">Internet service · Guyana &amp; beyond</p>
+          <p className="eyebrow eyebrow-on-dark">Internet service · Antigua &amp; the Caribbean</p>
           <h1 className="hero-title">The world in your hands. Connection you can measure.</h1>
           <p className="hero-sub">
             GlobalNetwork tracks every customer subscription in real time — extend service by days when the
@@ -36,28 +32,25 @@ export default function App() {
           </p>
           <div className="hero-ctas">
             <a className="btn btn-primary btn-lg" href={OPS}>
-              Open customer desk
-            </a>
-            <a className="btn btn-ghost-on-dark btn-lg" href={TCD}>
-              Manage subscription plans
+              Open owner desk
             </a>
           </div>
         </div>
       </section>
 
       <section id="product" className="section">
-        <p className="eyebrow">SareChild Ops architecture</p>
+        <p className="eyebrow">How it is built</p>
         <h2>Four live layers</h2>
         <p className="muted" style={{ maxWidth: 640, marginTop: '0.75rem' }}>
-          The same control-plane pattern used by SareChild TCD — Apps, Firebase, Cloudflare, Hosting — now
-          running an ISP: subscriptions, grace days, R2 issue photos, and support chat.
+          Apps, Firebase, Cloudflare, and Hosting — running an ISP: subscriptions, grace days, R2 issue photos,
+          and chat between the owner and each customer.
         </p>
         <div className="section-grid">
           {[
-            ['1 · Apps', 'Staff web, TCD console, Flutter iOS & Android customer app.'],
+            ['1 · Apps', 'Owner web desk plus Flutter iOS & Android customer app.'],
             ['2 · Firebase', 'Auth, Firestore customers, Cloud Functions for extend-days, FCM alerts.'],
             ['3 · Cloudflare', 'Worker + R2 for issue photos, D1 usage, KV cache at the edge.'],
-            ['4 · Hosting', 'GitHub Pages marketing + TCD, Firebase Hosting for the staff workspace.'],
+            ['4 · Hosting', 'GitHub Pages marketing site and owner desk; Firebase Hosting as an optional mirror.'],
           ].map(([title, body]) => (
             <article key={title} className="glass-card">
               <h3>{title}</h3>
@@ -70,7 +63,7 @@ export default function App() {
       </section>
 
       <section id="how" className="section">
-        <p className="eyebrow">For the service provider</p>
+        <p className="eyebrow">For the owner</p>
         <h2>Extend days when they don’t have the full fee</h2>
         <div className="section-grid">
           <article className="glass-card">
@@ -79,11 +72,11 @@ export default function App() {
           </article>
           <article className="glass-card">
             <h3>Realtime chat</h3>
-            <p className="muted">Talk to the subscriber from the customer desk. Images go to R2.</p>
+            <p className="muted">Talk to the subscriber from the owner desk. Photos go to R2.</p>
           </article>
           <article className="glass-card">
             <h3>Issue photos</h3>
-            <p className="muted">Customers upload line faults; staff see a live gallery from Cloudflare R2.</p>
+            <p className="muted">Customers upload line faults; the owner sees a live gallery from Cloudflare R2.</p>
           </article>
         </div>
       </section>
@@ -94,21 +87,21 @@ export default function App() {
         <div className="section-grid">
           <article className="glass-card">
             <h3>15 days</h3>
-            <p style={{ fontSize: '2rem', margin: '0.4rem 0' }}>G$2,200</p>
+            <p style={{ fontSize: '2rem', margin: '0.4rem 0' }}>EC$2,200</p>
           </article>
           <article className="glass-card">
             <h3>30 days</h3>
-            <p style={{ fontSize: '2rem', margin: '0.4rem 0' }}>G$4,000</p>
+            <p style={{ fontSize: '2rem', margin: '0.4rem 0' }}>EC$4,000</p>
           </article>
           <article className="glass-card">
             <h3>90 days</h3>
-            <p style={{ fontSize: '2rem', margin: '0.4rem 0' }}>G$10,800</p>
+            <p style={{ fontSize: '2rem', margin: '0.4rem 0' }}>EC$10,800</p>
           </article>
         </div>
       </section>
 
       <footer className="site-footer">
-        GlobalNetwork · TCD on GitHub Pages · staff dashboard on Firebase Hosting · R2 for media
+        GlobalNetwork · Antigua · EC dollars · Owner desk on GitHub Pages
       </footer>
     </div>
   )

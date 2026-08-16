@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 import '../models/customer.dart';
 
@@ -13,8 +15,11 @@ class GnApi {
   final String r2BaseUrl;
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
+  final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
 
   User? get user => _auth.currentUser;
+
+  Stream<User?> authChanges() => _auth.authStateChanges();
 
   Future<void> signIn(String email, String password) {
     return _auth.signInWithEmailAndPassword(email: email, password: password);
@@ -26,17 +31,21 @@ class GnApi {
 
   Future<void> signOut() => _auth.signOut();
 
-  Stream<CustomerAccount?> watchCustomer() {
-    final email = user?.email?.toLowerCase();
-    if (email == null) return Stream.value(null);
-    return _db
-        .collection('customers')
-        .where('email', isEqualTo: email)
-        .limit(1)
-        .snapshots()
-        .map((snap) {
-      if (snap.docs.isEmpty) return null;
-      return CustomerAccount.from(snap.docs.first.id, snap.docs.first.data());
+  Future<String> linkAccount() async {
+    final callable = _functions.httpsCallable('linkCustomerAccount');
+    final res = await callable.call(<String, dynamic>{});
+    final data = Map<String, dynamic>.from(res.data as Map);
+    final id = data['customerId'] as String?;
+    if (id == null || id.isEmpty) {
+      throw Exception('No customer record for this email.');
+    }
+    return id;
+  }
+
+  Stream<CustomerAccount?> watchCustomer(String customerId) {
+    return _db.collection('customers').doc(customerId).snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return null;
+      return CustomerAccount.from(snap.id, snap.data()!);
     });
   }
 
@@ -52,7 +61,7 @@ class GnApi {
               .map(
                 (d) => ChatLine(
                   id: d.id,
-                  from: (d.data()['from'] ?? 'staff') as String,
+                  from: (d.data()['from'] ?? 'owner') as String,
                   text: (d.data()['text'] ?? '') as String,
                   createdAtMs: (d.data()['createdAtMs'] as num?)?.toInt() ?? 0,
                 ),
@@ -69,11 +78,21 @@ class GnApi {
     });
   }
 
-  Future<void> heartbeat(String customerId) {
-    return _db.collection('customers').doc(customerId).set(
-      {'lastSeenMs': DateTime.now().millisecondsSinceEpoch, 'uid': user?.uid},
-      SetOptions(merge: true),
-    );
+  Future<String?> readFcmToken() async {
+    try {
+      await FirebaseMessaging.instance.requestPermission();
+      return FirebaseMessaging.instance.getToken();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> heartbeat(String customerId) async {
+    final token = await readFcmToken();
+    await _functions.httpsCallable('heartbeat').call(<String, dynamic>{
+      'customerId': customerId,
+      if (token != null) 'fcmToken': token,
+    });
   }
 
   Future<String> uploadIssuePhoto({

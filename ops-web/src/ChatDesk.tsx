@@ -25,7 +25,9 @@ export function ChatDesk({ customers }: { customers: Customer[] }) {
 
   useEffect(() => {
     if (!selected) return
-    return repo.observeChat(selected, setMessages)
+    const unsub = repo.observeChat(selected, setMessages)
+    void repo.markChatRead(selected).catch(() => undefined)
+    return unsub
   }, [selected])
 
   const pick = (id: string) => {
@@ -40,14 +42,14 @@ export function ChatDesk({ customers }: { customers: Customer[] }) {
     if (!selected || !draft.trim()) return
     const text = draft.trim()
     setDraft('')
-    await repo.sendChat(selected, text, 'staff')
+    await repo.sendChat(selected, text, 'owner')
   }
 
   return (
     <div className="inbox">
       <header className="desk-hero compact">
         <div>
-          <p className="eyebrow">Support</p>
+          <p className="eyebrow">Chat</p>
           <h1>Inbox</h1>
         </div>
       </header>
@@ -73,7 +75,7 @@ export function ChatDesk({ customers }: { customers: Customer[] }) {
           <div className="thread">
             {messages.map((m) => (
               <div key={m.id} className={`bubble ${m.from}`}>
-                <span className="muted tiny">{m.from === 'staff' ? 'Desk' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
+                <span className="muted tiny">{m.from === 'owner' ? 'Owner' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
                 <p>{m.text}</p>
               </div>
             ))}

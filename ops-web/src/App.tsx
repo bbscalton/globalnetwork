@@ -6,35 +6,35 @@ import * as repo from './lib/repo'
 import { ONLINE_AFTER_MS } from './lib/firebase'
 import { deskPulse } from './lib/desk'
 import type { Customer, IssueTicket, Plan } from './lib/types'
-import { roleLabel } from './lib/roles'
 import { Board } from './Board'
 import { CustomerPage } from './CustomerPage'
 import { ChatDesk } from './ChatDesk'
 import { IssuesDesk } from './IssuesDesk'
+import { PlansDesk } from './PlansDesk'
 
 export default function App() {
-  const { configured, user, loading, canDesk, canSupport, pendingAccess, signIn, signInWithGoogle, signOut, orgId, role } =
-    useAuth()
+  const { configured, user, loading, isOwner, signIn, signInWithGoogle, signOut, orgId } = useAuth()
   if (!configured) {
     return (
       <div className="auth">
         <div className="auth-card">
-          <h1>Customer desk not configured</h1>
+          <h1>Owner desk not configured</h1>
           <p className="muted">This GitHub Pages build is missing Firebase keys.</p>
         </div>
       </div>
     )
   }
-  if (loading) return <div className="auth">Opening customer desk…</div>
+  if (loading) return <div className="auth">Opening owner desk…</div>
   if (!user) return <Login signIn={signIn} signInWithGoogle={signInWithGoogle} />
-  if (pendingAccess) {
+  if (!isOwner) {
     return (
       <div className="auth">
         <div className="auth-card">
-          <h1>Waiting for a role</h1>
+          <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={56} height={56} className="auth-logo" />
+          <h1>Owner only</h1>
           <p className="muted">
-            Signed in as {user.email}. You are on the TCD user list. A control admin must assign Customer desk or
-            Support before you can manage subscribers.
+            Signed in as {user.email}. The GlobalNetwork desk is for the owner account. Customers use the
+            iOS and Android app.
           </p>
           <button className="btn btn-ghost" type="button" onClick={() => void signOut()}>
             Sign out
@@ -43,28 +43,7 @@ export default function App() {
       </div>
     )
   }
-  if (!canSupport) {
-    return (
-      <div className="auth">
-        <div className="auth-card">
-          <h1>No desk access yet</h1>
-          <p className="muted">Signed in as {user.email}. Ask a control admin to assign your Google account a role in TCD → Users.</p>
-          <button className="btn btn-ghost" type="button" onClick={() => void signOut()}>
-            Sign out
-          </button>
-        </div>
-      </div>
-    )
-  }
-  return (
-    <Shell
-      orgId={orgId || 'globalnetwork'}
-      email={user.email || ''}
-      canDesk={canDesk}
-      roleLabel={roleLabel(role)}
-      signOut={signOut}
-    />
-  )
+  return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} />
 }
 
 function Login({
@@ -74,7 +53,7 @@ function Login({
   signIn: (e: string, p: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
 }) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState('neuereatec@gmail.com')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(() => consumeGoogleAuthError())
   const [busy, setBusy] = useState(false)
@@ -103,11 +82,11 @@ function Login({
   }
   return (
     <div className="auth">
-      <form className="auth-card" onSubmit={(e) => void submit(e)}>
-        <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={56} height={56} className="auth-logo" />
+      <form className="auth-card gn-glow" onSubmit={(e) => void submit(e)}>
+        <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="GlobalNetwork" width={72} height={72} className="auth-logo gn-spin" />
         <p className="eyebrow">GlobalNetwork</p>
-        <h1>Customer desk</h1>
-        <p className="muted">Google sign-in puts you on the user list. A control admin assigns your role from TCD.</p>
+        <h1>Owner desk</h1>
+        <p className="muted">Sign in to manage customer internet subscriptions, grant days, and chat.</p>
         <input type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="password" required minLength={6} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p className="fail">{error}</p>}
@@ -117,7 +96,7 @@ function Login({
         <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void onGoogle()}>
           {busy ? 'Opening Google…' : 'Continue with Google'}
         </button>
-        <p className="muted tiny">Allow popups for Google sign-in.</p>
+        <p className="muted tiny">Owner: neuereatec@gmail.com · Allow popups for Google.</p>
       </form>
     </div>
   )
@@ -126,14 +105,10 @@ function Login({
 function Shell({
   orgId,
   email,
-  canDesk,
-  roleLabel: roleName,
   signOut,
 }: {
   orgId: string
   email: string
-  canDesk: boolean
-  roleLabel: string
   signOut: () => Promise<void>
 }) {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -167,26 +142,25 @@ function Shell({
           <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" />
           <div>
             <strong>GlobalNetwork</strong>
-            <div className="muted tiny">{roleName}</div>
+            <div className="muted tiny">Owner desk</div>
           </div>
         </div>
-        {canDesk && (
-          <NavLink to="/" end>
-            Roster
-            <span className="nav-count">{pulse.total}</span>
-          </NavLink>
-        )}
+        <NavLink to="/" end>
+          Roster
+          <span className="nav-count">{pulse.total}</span>
+        </NavLink>
         <NavLink to="/chat">
           Inbox
-          {pulse.unread.length > 0 && <span className="nav-count hot">{pulse.unread.length}</span>}
+          {pulse.unread.length > 0 && <span className="nav-count hot gn-pulse">{pulse.unread.length}</span>}
         </NavLink>
         <NavLink to="/issues">
           Issues
           {pulse.openIssues > 0 && <span className="nav-count hot">{pulse.openIssues}</span>}
         </NavLink>
+        <NavLink to="/plans">Plans</NavLink>
         <div className="side-pulse">
           <p>
-            <b>{pulse.active}</b> live
+            <b className="live-num">{pulse.active}</b> live
           </p>
           <p>
             <b>{pulse.grace}</b> grace · <b>{pulse.expired}</b> expired
@@ -200,29 +174,12 @@ function Shell({
       <main className="main">
         {error && <p className="fail">{error}</p>}
         <Routes>
-          <Route
-            path="/"
-            element={
-              canDesk ? (
-                <Board customers={customers} plans={plans} issues={issues} now={now} />
-              ) : (
-                <Navigate to="/chat" replace />
-              )
-            }
-          />
-          <Route
-            path="/c/:id"
-            element={
-              canDesk ? (
-                <CustomerPage customers={customers} plans={plans} issues={issues} now={now} />
-              ) : (
-                <Navigate to="/chat" replace />
-              )
-            }
-          />
+          <Route path="/" element={<Board customers={customers} plans={plans} issues={issues} now={now} />} />
+          <Route path="/c/:id" element={<CustomerPage customers={customers} plans={plans} issues={issues} now={now} />} />
           <Route path="/chat" element={<ChatDesk customers={customers} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
-          <Route path="*" element={<Navigate to={canDesk ? '/' : '/chat'} replace />} />
+          <Route path="/plans" element={<PlansDesk plans={plans} customers={customers} now={now} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

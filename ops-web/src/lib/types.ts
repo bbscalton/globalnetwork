@@ -1,20 +1,3 @@
-export type TcdCheckStatus = 'ok' | 'warn' | 'fail'
-
-export type TcdCheck = {
-  id: string
-  label: string
-  group: 'platform' | 'fleet' | 'uptime'
-  status: TcdCheckStatus
-  message: string
-  latencyMs?: number | null
-  optional?: boolean
-}
-
-export type TcdReport = {
-  generatedAtMs: number
-  checks: TcdCheck[]
-}
-
 export type CustomerStatus = 'active' | 'grace' | 'expired' | 'suspended'
 
 export type Customer = {
@@ -59,7 +42,7 @@ export type Payment = {
 
 export type ChatMessage = {
   id: string
-  from: 'customer' | 'staff'
+  from: 'customer' | 'owner'
   text: string
   mediaUrl?: string | null
   createdAtMs: number
@@ -74,67 +57,4 @@ export type IssueTicket = {
   status: 'open' | 'in_progress' | 'resolved'
   photoUrls: string[]
   createdAtMs: number
-}
-
-export type SiteUptime = {
-  id: string
-  label: string
-  url: string
-  status: TcdCheckStatus
-  message: string
-  latencyMs?: number | null
-}
-
-export type ArchNode = {
-  id: string
-  label: string
-  group: 'client' | 'firebase' | 'edge' | 'hosting' | 'external'
-  status: TcdCheckStatus
-  detail?: string
-  url?: string
-}
-
-export type PlatformFault = {
-  id: string
-  severity: 'critical' | 'warning' | 'info'
-  title: string
-  detail: string
-  source: string
-}
-
-export type TcdTab = 'overview' | 'accounts' | 'plans' | 'issues' | 'chat' | 'storage' | 'architecture' | 'system'
-
-export type AdminAuditLogEntry = {
-  id: string
-  action: string
-  adminEmail: string
-  targetUid: string
-  detail?: string
-  atMs: number
-}
-
-export type StorageDump = {
-  objects: number
-  bytes: number
-  truncated: boolean
-  customers: Record<string, { bytes: number; objects: number }>
-}
-
-export type StaffMember = {
-  uid: string
-  email: string
-  displayName?: string
-  photoUrl?: string
-  provider?: string
-  role: 'pending' | 'desk' | 'support' | 'admin' | string
-  blocked: boolean
-  orgId: string
-  lastLoginMs?: number
-}
-
-export type StaffInvite = {
-  email: string
-  role: 'pending' | 'desk' | 'support' | 'admin' | string
-  invitedBy: string
-  atMs: number
 }

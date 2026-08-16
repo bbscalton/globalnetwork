@@ -31,7 +31,7 @@ jobs:
             marketing/package-lock.json
             ops-web/package-lock.json
 
-      - name: Build marketing + TCD
+      - name: Build marketing site
         working-directory: marketing
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
@@ -51,7 +51,7 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build staff dashboard into /ops
+      - name: Build owner desk into /ops
         working-directory: ops-web
         env:
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
