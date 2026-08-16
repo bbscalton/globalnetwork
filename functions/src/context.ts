@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import { logger } from "firebase-functions";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
+import { isAssignedRole, parseRole } from "./roles";
 
 export const ADMIN_EMAIL = "neuereatec@gmail.com";
 export const DEFAULT_ORG_ID = "globalnetwork";
@@ -26,18 +27,25 @@ export function requireAuth(request: CallableRequest): { uid: string; email: str
   return { uid, email };
 }
 
-export async function requireStaff(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean }> {
+export async function requireStaff(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean; role: string }> {
   const user = requireAuth(request);
   const adminUser = user.email.trim().toLowerCase() === ADMIN_EMAIL;
-  if (adminUser) return { ...user, admin: true };
+  if (adminUser) return { ...user, admin: true, role: "admin" };
   const staff = await db.collection("staffProfiles").doc(user.uid).get();
-  if (!staff.exists || staff.get("blocked") === true) {
+  const role = parseRole(staff.get("role"));
+  if (!staff.exists || staff.get("blocked") === true || !isAssignedRole(role)) {
     throw new HttpsError("permission-denied", "Staff access required.");
   }
-  return { ...user, admin: staff.get("role") === "admin" };
+  return { ...user, admin: role === "admin", role };
 }
 
-export async function requireAdmin(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean }> {
+export async function requireDesk(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean; role: string }> {
+  const staff = await requireStaff(request);
+  if (staff.role === "support") throw new HttpsError("permission-denied", "Customer desk role required.");
+  return staff;
+}
+
+export async function requireAdmin(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean; role: string }> {
   const staff = await requireStaff(request);
   if (!staff.admin) throw new HttpsError("permission-denied", "Admin only.");
   return staff;

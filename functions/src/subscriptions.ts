@@ -1,8 +1,8 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { DEFAULT_ORG_ID, DEFAULT_PLANS, db, requireStaff, sendToToken, writeAudit } from "./context";
+import { DEFAULT_ORG_ID, DEFAULT_PLANS, db, requireAdmin, requireDesk, sendToToken, writeAudit } from "./context";
 
 export const ensureOrgDefaults = onCall(async (request) => {
-  const staff = await requireStaff(request);
+  const staff = await requireAdmin(request);
   const orgId = String(request.data?.orgId ?? DEFAULT_ORG_ID);
   const orgRef = db.collection("orgs").doc(orgId);
   await orgRef.set(
@@ -20,7 +20,6 @@ export const ensureOrgDefaults = onCall(async (request) => {
     {
       email: staff.email,
       orgId,
-      role: staff.admin ? "admin" : "staff",
       updatedAtMs: Date.now(),
     },
     { merge: true },
@@ -43,7 +42,7 @@ export const ensureOrgDefaults = onCall(async (request) => {
 });
 
 export const savePlan = onCall(async (request) => {
-  const staff = await requireStaff(request);
+  const staff = await requireAdmin(request);
   const name = String(request.data?.name ?? "").trim();
   const days = Number(request.data?.days ?? 0);
   const feeAmount = Number(request.data?.feeAmount ?? 0);
@@ -72,7 +71,7 @@ export const savePlan = onCall(async (request) => {
 });
 
 export const createCustomer = onCall(async (request) => {
-  const staff = await requireStaff(request);
+  const staff = await requireDesk(request);
   const name = String(request.data?.name ?? "").trim();
   if (!name) throw new HttpsError("invalid-argument", "Name is required.");
   const planId = String(request.data?.planId ?? "");
@@ -114,7 +113,7 @@ export const createCustomer = onCall(async (request) => {
 });
 
 export const extendSubscription = onCall(async (request) => {
-  const staff = await requireStaff(request);
+  const staff = await requireDesk(request);
   const customerId = String(request.data?.customerId ?? "");
   const days = Math.floor(Number(request.data?.days ?? 0));
   const amountPaid = Number(request.data?.amountPaid ?? 0);
@@ -181,7 +180,7 @@ export const extendSubscription = onCall(async (request) => {
 });
 
 export const suspendCustomer = onCall(async (request) => {
-  const staff = await requireStaff(request);
+  const staff = await requireDesk(request);
   const customerId = String(request.data?.customerId ?? "");
   if (!customerId) throw new HttpsError("invalid-argument", "customerId required.");
   await db.collection("customers").doc(customerId).update({ status: "suspended", updatedAtMs: Date.now() });

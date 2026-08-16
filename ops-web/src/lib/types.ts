@@ -123,14 +123,18 @@ export type StorageDump = {
 export type StaffMember = {
   uid: string
   email: string
-  role: 'admin' | 'staff' | string
+  displayName?: string
+  photoUrl?: string
+  provider?: string
+  role: 'pending' | 'desk' | 'support' | 'admin' | string
   blocked: boolean
   orgId: string
+  lastLoginMs?: number
 }
 
 export type StaffInvite = {
   email: string
-  role: 'admin' | 'staff' | string
+  role: 'pending' | 'desk' | 'support' | 'admin' | string
   invitedBy: string
   atMs: number
 }

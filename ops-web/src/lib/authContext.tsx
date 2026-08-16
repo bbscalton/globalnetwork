@@ -17,13 +17,19 @@ import { auth, COL, db, FIREBASE_CONFIGURED } from './firebase'
 import { isProjectAdmin } from './admin'
 import { completeGoogleRedirect, signInWithGoogle as startGoogleSignIn } from './googleAuth'
 import { claimStaffAccess } from './repo'
+import { accessFromRole, parseRole, type StaffRole } from './roles'
 
 type AuthContextValue = {
   configured: boolean
   user: User | null
   loading: boolean
+  role: StaffRole | null
+  pendingAccess: boolean
   isAdmin: boolean
   isStaff: boolean
+  canTcd: boolean
+  canDesk: boolean
+  canSupport: boolean
   blockedMessage: string | null
   orgId: string | null
   signIn: (email: string, password: string) => Promise<void>
@@ -36,11 +42,12 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isStaff, setIsStaff] = useState(false)
+  const [role, setRole] = useState<StaffRole | null>(null)
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null)
   const [orgId, setOrgId] = useState<string | null>(null)
 
-  const isAdmin = isProjectAdmin(user)
+  const owner = isProjectAdmin(user)
+  const access = accessFromRole(role, owner)
 
   const firebaseAuth = auth
   useEffect(() => {
@@ -57,37 +64,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBlockedMessage(null)
         if (!next) {
           setUser(null)
-          setIsStaff(false)
+          setRole(null)
           setOrgId(null)
           setLoading(false)
           return
         }
         setLoading(true)
-        const admin = isProjectAdmin(next)
-        if (admin) {
-          setIsStaff(true)
-          setOrgId('globalnetwork')
-        }
         setUser(next)
-        let staffOk = admin
         try {
           const claimed = await claimStaffAccess()
           if (cancelled) return
-          staffOk = admin || claimed.staff
-          setIsStaff(staffOk)
+          setRole(parseRole(claimed.role))
           setOrgId(claimed.orgId || 'globalnetwork')
         } catch {
           if (db) {
             const staff = await getDoc(doc(db, COL.staffProfiles, next.uid)).catch(() => null)
             if (cancelled) return
-            staffOk = admin || staff?.exists() === true
-            setIsStaff(staffOk)
-            setOrgId((staff?.data()?.orgId as string | undefined) ?? 'globalnetwork')
-            if (staff?.data()?.blocked === true) {
+            const data = staff?.data()
+            if (data?.blocked === true) {
               setBlockedMessage('This staff account is suspended.')
               await firebaseSignOut(firebaseAuth)
               return
             }
+            setRole(staff?.exists() ? parseRole(data?.role) : 'pending')
+            setOrgId((data?.orgId as string | undefined) ?? 'globalnetwork')
+          } else {
+            setRole(isProjectAdmin(next) ? 'admin' : 'pending')
           }
         }
         setLoading(false)
@@ -104,8 +106,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       configured: FIREBASE_CONFIGURED,
       user,
       loading,
-      isAdmin,
-      isStaff: isAdmin || isStaff,
+      role,
+      pendingAccess: access.pending,
+      isAdmin: access.isAdmin,
+      isStaff: access.canSupport,
+      canTcd: access.canTcd,
+      canDesk: access.canDesk,
+      canSupport: access.canSupport,
       blockedMessage,
       orgId,
       signIn: async (email, password) => {
@@ -120,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (firebaseAuth) await firebaseSignOut(firebaseAuth)
       },
     }),
-    [user, loading, isAdmin, isStaff, blockedMessage, orgId, firebaseAuth],
+    [user, loading, role, access, blockedMessage, orgId, firebaseAuth],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

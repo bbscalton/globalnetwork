@@ -12,7 +12,6 @@ export function PlansPanel({
   onBusy,
   onStatus,
   onError,
-  onOpenFleet,
 }: {
   plans: Plan[]
   customers: Customer[]
@@ -21,7 +20,6 @@ export function PlansPanel({
   onBusy: (v: boolean) => void
   onStatus: (msg: string) => void
   onError: (msg: string | null) => void
-  onOpenFleet?: () => void
 }) {
   const [name, setName] = useState('30-day home')
   const [days, setDays] = useState('30')
@@ -261,11 +259,6 @@ export function PlansPanel({
                 >
                   {row.plan.active ? 'Stop selling' : 'Start selling'}
                 </button>
-                {onOpenFleet && (
-                  <button className="btn btn-ghost-on-dark" type="button" onClick={onOpenFleet}>
-                    See subscribers
-                  </button>
-                )}
               </div>
             </article>
           )

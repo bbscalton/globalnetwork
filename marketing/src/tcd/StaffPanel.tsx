@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { StaffInvite, StaffMember } from './types'
 import { createStaffAccount, inviteStaff, listStaff, removeStaff, setStaffRole } from './repo'
+import { parseRole, roleLabel, type StaffRole } from './roles'
+
+const ASSIGNABLE: Array<Exclude<StaffRole, 'pending'>> = ['desk', 'support', 'admin']
 
 export function StaffPanel({
   busy,
@@ -17,7 +20,7 @@ export function StaffPanel({
   const [invites, setInvites] = useState<StaffInvite[]>([])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<'staff' | 'admin'>('staff')
+  const [role, setRole] = useState<Exclude<StaffRole, 'pending'>>('desk')
 
   const refresh = async () => {
     const next = await listStaff()
@@ -26,9 +29,12 @@ export function StaffPanel({
   }
 
   useEffect(() => {
-    void refresh().catch((e) => onError(e instanceof Error ? e.message : 'Could not load staff'))
+    void refresh().catch((e) => onError(e instanceof Error ? e.message : 'Could not load users'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const waiting = useMemo(() => staff.filter((row) => parseRole(row.role) === 'pending' && !row.blocked), [staff])
+  const active = useMemo(() => staff.filter((row) => parseRole(row.role) !== 'pending'), [staff])
 
   const run = async (work: () => Promise<string>) => {
     onBusy(true)
@@ -38,7 +44,7 @@ export function StaffPanel({
       await refresh()
       onStatus(msg)
     } catch (e) {
-      onError(e instanceof Error ? e.message : 'Staff update failed')
+      onError(e instanceof Error ? e.message : 'User update failed')
     } finally {
       onBusy(false)
     }
@@ -48,26 +54,28 @@ export function StaffPanel({
     <div className="tcd-grid">
       <div className="tcd-card tcd-card-wide">
         <div className="tcd-card-head">
-          <h2>Users &amp; roles</h2>
-          <span className="tcd-card-timestamp">Admin only</span>
+          <h2>Google sign-in &amp; roles</h2>
+          <span className="tcd-card-timestamp">Control plane only</span>
         </div>
         <p className="muted small">
-          Invite a Google account, or create an email/password login. Invited staff get access on their next sign-in.
+          Anyone who signs in with Google appears here as <strong>Awaiting role</strong>. Assign Customer desk,
+          Support, or Control admin. Pre-invite an email if they have not signed in yet.
         </p>
         <div className="tcd-form-grid" style={{ marginTop: '1rem' }}>
           <label>
             Email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="staff@example.com" />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tech@example.com" />
           </label>
           <label>
-            Role
-            <select value={role} onChange={(e) => setRole(e.target.value === 'admin' ? 'admin' : 'staff')}>
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
+            Role to grant
+            <select value={role} onChange={(e) => setRole(e.target.value as Exclude<StaffRole, 'pending'>)}>
+              <option value="desk">Customer desk — subscribers, renewals, collections</option>
+              <option value="support">Support — chat and tickets only</option>
+              <option value="admin">Control admin — TCD plans, health, and users</option>
             </select>
           </label>
           <label>
-            Password (only for new email login)
+            Password (only if creating a non-Google login)
             <input type="password" minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Optional" />
           </label>
         </div>
@@ -80,11 +88,13 @@ export function StaffPanel({
               void run(async () => {
                 const res = await inviteStaff(email.trim(), role)
                 setEmail('')
-                return res.status === 'linked' ? `Linked existing account ${email}` : `Invited ${email}. They can sign in now.`
+                return res.status === 'linked'
+                  ? `Assigned ${roleLabel(role)} to ${email}`
+                  : `Reserved ${email} as ${roleLabel(role)}. They get it on Google sign-in.`
               })
             }
           >
-            Invite email
+            Reserve email + role
           </button>
           <button
             className="btn btn-ghost-on-dark"
@@ -95,7 +105,7 @@ export function StaffPanel({
                 await createStaffAccount(email.trim(), password, role)
                 setEmail('')
                 setPassword('')
-                return `Created password login for ${email}`
+                return `Created password login for ${email} as ${roleLabel(role)}`
               })
             }
           >
@@ -106,23 +116,100 @@ export function StaffPanel({
 
       <div className="tcd-card tcd-card-wide">
         <div className="tcd-card-head">
-          <h2>Active staff</h2>
+          <h2>Awaiting a role</h2>
+          <span className="tcd-card-timestamp">{waiting.length} Google sign-ins</span>
+        </div>
+        {waiting.length === 0 && (
+          <p className="tcd-empty-note">No pending Google users. Have them open TCD or the customer desk and sign in with Google.</p>
+        )}
+        <div className="tcd-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Person</th>
+                <th>Signed in</th>
+                <th>Assign</th>
+              </tr>
+            </thead>
+            <tbody>
+              {waiting.map((row) => (
+                <tr key={row.uid}>
+                  <td>
+                    <strong>{row.displayName || row.email}</strong>
+                    <div className="muted small">{row.email} · {row.provider || 'google'}</div>
+                  </td>
+                  <td>{row.lastLoginMs ? new Date(row.lastLoginMs).toLocaleString() : '—'}</td>
+                  <td>
+                    <div className="tcd-plan-actions">
+                      {ASSIGNABLE.map((next) => (
+                        <button
+                          key={next}
+                          className="btn btn-ghost-on-dark"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void run(async () => {
+                            await setStaffRole(row.uid, next, false)
+                            return `${row.email} is now ${roleLabel(next)}`
+                          })}
+                        >
+                          {roleLabel(next)}
+                        </button>
+                      ))}
+                      <button className="btn btn-ghost-on-dark" type="button" disabled={busy} onClick={() => void run(async () => {
+                        await removeStaff(row.uid, row.email)
+                        return `Removed ${row.email}`
+                      })}>
+                        Ignore
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="tcd-card tcd-card-wide">
+        <div className="tcd-card-head">
+          <h2>Assigned users</h2>
         </div>
         <div className="tcd-table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Email</th>
+                <th>User</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {staff.map((row) => (
+              {active.map((row) => (
                 <tr key={row.uid}>
-                  <td>{row.email}</td>
-                  <td>{row.role}</td>
+                  <td>
+                    <strong>{row.displayName || row.email}</strong>
+                    <div className="muted small">{row.email}</div>
+                  </td>
+                  <td>
+                    <select
+                      value={parseRole(row.role) === 'pending' ? 'desk' : parseRole(row.role)}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const next = e.target.value as Exclude<StaffRole, 'pending'>
+                        void run(async () => {
+                          await setStaffRole(row.uid, next, row.blocked)
+                          return `${row.email} → ${roleLabel(next)}`
+                        })
+                      }}
+                    >
+                      {ASSIGNABLE.map((next) => (
+                        <option key={next} value={next}>
+                          {roleLabel(next)}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td>{row.blocked ? 'Suspended' : 'Active'}</td>
                   <td>
                     <button
@@ -130,19 +217,8 @@ export function StaffPanel({
                       type="button"
                       disabled={busy}
                       onClick={() => void run(async () => {
-                        await setStaffRole(row.uid, row.role === 'admin' ? 'staff' : 'admin', row.blocked)
-                        return `Updated role for ${row.email}`
-                      })}
-                    >
-                      Make {row.role === 'admin' ? 'staff' : 'admin'}
-                    </button>{' '}
-                    <button
-                      className="btn btn-ghost-on-dark"
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void run(async () => {
-                        await setStaffRole(row.uid, row.role === 'admin' ? 'admin' : 'staff', !row.blocked)
-                        return `${row.blocked ? 'Restored' : 'Suspended'} ${row.email}`
+                        await setStaffRole(row.uid, parseRole(row.role) === 'pending' ? 'desk' : (parseRole(row.role) as Exclude<StaffRole, 'pending'>), !row.blocked)
+                        return row.blocked ? `Restored ${row.email}` : `Suspended ${row.email}`
                       })}
                     >
                       {row.blocked ? 'Restore' : 'Suspend'}
@@ -161,9 +237,9 @@ export function StaffPanel({
                   </td>
                 </tr>
               ))}
-              {staff.length === 0 && (
+              {active.length === 0 && (
                 <tr>
-                  <td colSpan={4}>No staff profiles yet. Invite someone above.</td>
+                  <td colSpan={4}>No assigned operators yet.</td>
                 </tr>
               )}
             </tbody>
@@ -174,19 +250,19 @@ export function StaffPanel({
       {invites.length > 0 && (
         <div className="tcd-card tcd-card-wide">
           <div className="tcd-card-head">
-            <h2>Pending invites</h2>
+            <h2>Reserved emails</h2>
           </div>
           <ul className="tcd-repair-log">
             {invites.map((row) => (
               <li key={row.email}>
-                {row.email} · {row.role} · invited by {row.invitedBy}{' '}
+                {row.email} will become {roleLabel(String(row.role))} on first Google sign-in · reserved by {row.invitedBy}{' '}
                 <button
                   className="btn btn-ghost-on-dark"
                   type="button"
                   disabled={busy}
                   onClick={() => void run(async () => {
                     await removeStaff(undefined, row.email)
-                    return `Canceled invite for ${row.email}`
+                    return `Canceled ${row.email}`
                   })}
                 >
                   Cancel

@@ -102,7 +102,7 @@ export type PlatformFault = {
   source: string
 }
 
-export type TcdTab = 'plans' | 'overview' | 'fleet' | 'storage' | 'architecture' | 'system' | 'staff'
+export type TcdTab = 'plans' | 'overview' | 'users' | 'storage' | 'architecture' | 'system'
 
 export type AdminAuditLogEntry = {
   id: string
@@ -120,17 +120,23 @@ export type StorageDump = {
   customers: Record<string, { bytes: number; objects: number }>
 }
 
+export type StaffRole = 'pending' | 'desk' | 'support' | 'admin'
+
 export type StaffMember = {
   uid: string
   email: string
-  role: 'admin' | 'staff' | string
+  displayName?: string
+  photoUrl?: string
+  provider?: string
+  role: StaffRole | string
   blocked: boolean
   orgId: string
+  lastLoginMs?: number
 }
 
 export type StaffInvite = {
   email: string
-  role: 'admin' | 'staff' | string
+  role: StaffRole | string
   invitedBy: string
   atMs: number
 }

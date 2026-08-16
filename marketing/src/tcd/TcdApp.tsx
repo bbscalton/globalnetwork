@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { consumeGoogleAuthError, googleAuthErrorMessage } from './googleAuth'
 import { useAuth } from './authContext'
 import { ArchitectureTree, buildArchNodes } from './ArchitectureTree'
-import { AccountsPanel } from './AccountsPanel'
 import { PlansPanel } from './PlansPanel'
 import { StoragePanel } from './StoragePanel'
 import { SystemPanel } from './SystemPanel'
@@ -11,7 +10,6 @@ import { MARKETING_URL, OPS_WEB_URL, TCD_URL } from './firebase'
 import * as repo from './repo'
 import type {
   Customer,
-  IssueTicket,
   Plan,
   PlatformFault,
   SiteUptime,
@@ -41,7 +39,7 @@ function timeAgo(ms: number | null | undefined): string {
 }
 
 export function TcdApp() {
-  const { configured, user, loading, isAdmin, isStaff, blockedMessage, orgId, signIn, signInWithGoogle, signOut } =
+  const { configured, user, loading, canTcd, canDesk, canSupport, pendingAccess, blockedMessage, orgId, signIn, signInWithGoogle, signOut } =
     useAuth()
 
   if (!configured) {
@@ -62,16 +60,38 @@ export function TcdApp() {
 
   if (!user) return <TcdLogin signIn={signIn} signInWithGoogle={signInWithGoogle} />
 
-  if (!isStaff && !isAdmin) {
+  if (pendingAccess) {
     return (
       <div className="tcd-auth-wrap">
         <div className="tcd-auth-card">
-          <p className="eyebrow eyebrow-on-dark">GlobalNetwork Ops</p>
-          <h1>Staff only</h1>
+          <p className="eyebrow eyebrow-on-dark">Waiting for a role</p>
+          <h1>Signed in with Google</h1>
           <p className="muted on-dark">
-            Signed in as {user.email || 'this Google account'}. Ask neuereatec@gmail.com to add you under Staff
-            in TCD.
+            {user.email} is on the user list. A control admin must assign Customer desk, Support, or Control admin
+            under Users in TCD.
           </p>
+          <button className="btn btn-ghost-on-dark" type="button" onClick={() => void signOut()}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!canTcd) {
+    return (
+      <div className="tcd-auth-wrap">
+        <div className="tcd-auth-card">
+          <p className="eyebrow eyebrow-on-dark">Control plane</p>
+          <h1>TCD is admin-only</h1>
+          <p className="muted on-dark">
+            {user.email} can use the customer desk
+            {canDesk ? ' for subscribers and renewals' : canSupport ? ' for chat and tickets' : ''}. Plans, users, and
+            health stay here for control admins.
+          </p>
+          <a className="btn btn-primary" href={OPS_WEB_URL}>
+            Open customer desk
+          </a>
           <button className="btn btn-ghost-on-dark" type="button" onClick={() => void signOut()}>
             Sign out
           </button>
@@ -93,13 +113,7 @@ export function TcdApp() {
   }
 
   return (
-    <TcdDashboard
-      email={user.email || ''}
-      isAdmin={isAdmin}
-      isStaff={isStaff}
-      orgId={orgId}
-      signOut={signOut}
-    />
+    <TcdDashboard email={user.email || ''} orgId={orgId} signOut={signOut} />
   )
 }
 
@@ -148,7 +162,7 @@ function TcdLogin({
           <p className="eyebrow eyebrow-on-dark">ISP plan control</p>
           <h1>TCD Control Plane</h1>
           <p className="muted on-dark small" style={{ marginTop: '0.5rem' }}>
-            Sign in to manage subscription packages, fees, and network health.
+            Control admins manage plans and users here. Google sign-in records you; an admin assigns your role.
           </p>
         </div>
         <label>
@@ -176,14 +190,10 @@ function TcdLogin({
 
 function TcdDashboard({
   email,
-  isAdmin,
-  isStaff,
   orgId,
   signOut,
 }: {
   email: string
-  isAdmin: boolean
-  isStaff: boolean
   orgId: string | null
   signOut: () => Promise<void>
 }) {
@@ -193,7 +203,6 @@ function TcdDashboard({
   const [siteUptime, setSiteUptime] = useState<SiteUptime[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
-  const [issues, setIssues] = useState<IssueTicket[]>([])
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
@@ -211,7 +220,6 @@ function TcdDashboard({
     const unsubs = [
       repo.observeCustomers(orgId, setCustomers, (e) => setError(e.message)),
       repo.observePlans(setPlans, (e) => setError(e.message)),
-      repo.observeIssues(setIssues),
     ]
     return () => unsubs.forEach((u) => u())
   }, [orgId])
@@ -267,9 +275,8 @@ function TcdDashboard({
       due3,
       openChat,
       balance,
-      openIssues: issues.filter((i) => i.status !== 'resolved').length,
     }
-  }, [customers, issues, nowTick])
+  }, [customers, nowTick])
 
   const overallStatus = useMemo<TcdCheckStatus | 'checking'>(() => {
     if (!report) return 'checking'
@@ -310,7 +317,6 @@ function TcdDashboard({
     const items: string[] = []
     if (pulse.due3 > 0) items.push(`${pulse.due3} subscription(s) expire in 3 days or less.`)
     if (pulse.grace > 0) items.push(`${pulse.grace} customer(s) on grace / partial fee — collect remaining balance.`)
-    if (pulse.openIssues > 0) items.push(`${pulse.openIssues} open issue ticket(s).`)
     report?.checks.forEach((c) => {
       if (c.status === 'fail') items.push(`${c.label}: ${c.message}`)
     })
@@ -320,14 +326,11 @@ function TcdDashboard({
   const tabs: Array<[TcdTab, string]> = [
     ['plans', 'Plans'],
     ['overview', 'Control'],
-    ['fleet', 'Fleet'],
+    ['users', 'Users'],
     ['system', 'System'],
-    ...(isAdmin ? ([['staff', 'Staff']] as Array<[TcdTab, string]>) : []),
     ['storage', 'Storage'],
     ['architecture', 'Architecture'],
   ]
-
-  const canManage = isAdmin || isStaff
 
   return (
     <div className="tcd-shell">
@@ -340,21 +343,19 @@ function TcdDashboard({
           <div className="tcd-identity">
             <p>
               Signed in as <strong>{email}</strong>
-              {isAdmin && <span className="tcd-admin-badge">ADMIN</span>}
+              <span className="tcd-admin-badge">ADMIN</span>
             </p>
             <p>Org: {orgId || 'globalnetwork'}</p>
           </div>
         </div>
 
-        {canManage && (
-          <nav className="tcd-tabs" aria-label="Control plane sections">
+        <nav className="tcd-tabs" aria-label="Control plane sections">
             {tabs.map(([id, label]) => (
               <button key={id} type="button" className={`tcd-tab ${tab === id ? 'active' : ''}`} onClick={() => setTab(id)}>
                 {label}
               </button>
             ))}
           </nav>
-        )}
 
         <div className="tcd-status-composition">
           <div className={`tcd-globe status-${tab === 'plans' ? (plans.length ? 'ok' : 'warn') : overallStatus}`}>
@@ -365,19 +366,19 @@ function TcdDashboard({
             <h1 className="tcd-status-title">
               {tab === 'plans'
                 ? 'Subscription catalog'
-                : tab === 'fleet'
-                  ? 'Who is on the network'
+                : tab === 'users'
+                  ? 'Users & roles'
                   : statusCopy[overallStatus].title}
             </h1>
             <p className="tcd-status-sub">
               {tab === 'plans'
                 ? 'Set cycle length, GYD fees, and which packages the customer desk can sell. Occupancy updates live.'
-                : tab === 'fleet'
-                  ? 'Control-plane snapshot of every subscriber. Renewals and chat are on the Customer desk.'
+                : tab === 'users'
+                  ? 'Google sign-ins wait here until you assign Customer desk, Support, or Control admin.'
                   : statusCopy[overallStatus].sub}
             </p>
             <div className="tcd-hero-actions">
-              {tab === 'plans' || tab === 'fleet' ? (
+              {tab === 'plans' || tab === 'users' ? (
                 <>
                   <a className="btn btn-primary" href={OPS_WEB_URL}>
                     Open customer desk
@@ -480,7 +481,7 @@ function TcdDashboard({
             </section>
             <div className="tcd-grid">
               <CheckCard title="Platform" checks={report?.checks.filter((c) => c.group === 'platform') ?? []} />
-              <CheckCard title="Fleet" checks={report?.checks.filter((c) => c.group === 'fleet') ?? []} />
+              <CheckCard title="Apps" checks={report?.checks.filter((c) => c.group === 'fleet') ?? []} />
               <div className="tcd-card">
                 <div className="tcd-card-head">
                   <h2>Published sites</h2>
@@ -512,7 +513,7 @@ function TcdDashboard({
           </>
         )}
 
-        {tab === 'plans' && canManage && (
+        {tab === 'plans' && (
           <PlansPanel
             plans={plans}
             customers={customers}
@@ -521,28 +522,16 @@ function TcdDashboard({
             onBusy={setBusy}
             onStatus={setStatusMsg}
             onError={setError}
-            onOpenFleet={() => setTab('fleet')}
           />
         )}
-        {tab === 'fleet' && canManage && (
-          <AccountsPanel
-            customers={customers}
-            plans={plans}
-            nowTick={nowTick}
-            busy={busy}
-            onBusy={setBusy}
-            onStatus={setStatusMsg}
-            onError={setError}
-          />
-        )}
-        {tab === 'storage' && canManage && <StoragePanel busy={busy} onBusy={setBusy} onError={setError} />}
-        {tab === 'system' && canManage && (
+        {tab === 'storage' && <StoragePanel busy={busy} onBusy={setBusy} onError={setError} />}
+        {tab === 'system' && (
           <SystemPanel busy={busy} onBusy={setBusy} onStatus={setStatusMsg} onError={setError} />
         )}
-        {tab === 'staff' && isAdmin && (
+        {tab === 'users' && (
           <StaffPanel busy={busy} onBusy={setBusy} onStatus={setStatusMsg} onError={setError} />
         )}
-        {tab === 'architecture' && canManage && (
+        {tab === 'architecture' && (
           <div className="tcd-card tcd-card-wide tcd-arch-card">
             <div className="tcd-card-head">
               <h2>System architecture</h2>
@@ -555,8 +544,8 @@ function TcdDashboard({
 
       <p className="tcd-footer-note">
         GlobalNetwork Total Control Dashboard · <a href={TCD_URL}>GitHub Pages TCD</a> ·{' '}
-                <a href={OPS_WEB_URL}>Firebase Pages customer desk</a> · <a href={MARKETING_URL}>Back to marketing site</a>
-        {isAdmin && <> · Hard-refresh (Ctrl+Shift+R) after deploys to bust cached JS/CSS.</>}
+        <a href={OPS_WEB_URL}>Customer desk</a> · <a href={MARKETING_URL}>Back to marketing site</a>
+        {' '}· Hard-refresh (Ctrl+Shift+R) after deploys.
       </p>
     </div>
   )

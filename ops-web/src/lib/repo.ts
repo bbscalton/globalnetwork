@@ -244,7 +244,12 @@ export async function sendTestFcm(): Promise<void> {
   await callable('adminSendTestFcm', { orgId: ORG_ID })
 }
 
-export async function claimStaffAccess(): Promise<{ staff: boolean; role: string | null; orgId: string }> {
+export async function claimStaffAccess(): Promise<{
+  staff: boolean
+  pending: boolean
+  role: string | null
+  orgId: string
+}> {
   return callable('claimStaffAccess', {})
 }
 
@@ -252,15 +257,22 @@ export async function listStaff(): Promise<{ staff: StaffMember[]; invites: Staf
   return callable('listStaff', {})
 }
 
-export async function inviteStaff(email: string, role: 'staff' | 'admin'): Promise<{ status: 'linked' | 'invited'; uid?: string }> {
+export async function inviteStaff(
+  email: string,
+  role: 'desk' | 'support' | 'admin',
+): Promise<{ status: 'linked' | 'invited'; uid?: string }> {
   return callable('inviteStaff', { email, role })
 }
 
-export async function createStaffAccount(email: string, password: string, role: 'staff' | 'admin'): Promise<{ uid: string }> {
+export async function createStaffAccount(
+  email: string,
+  password: string,
+  role: 'desk' | 'support' | 'admin',
+): Promise<{ uid: string }> {
   return callable('createStaffAccount', { email, password, role })
 }
 
-export async function setStaffRole(uid: string, role: 'staff' | 'admin', blocked: boolean): Promise<void> {
+export async function setStaffRole(uid: string, role: 'desk' | 'support' | 'admin', blocked: boolean): Promise<void> {
   await callable('setStaffRole', { uid, role, blocked })
 }
 

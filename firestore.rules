@@ -7,11 +7,20 @@ service cloud.firestore {
     function adminEmail() {
       return signedIn() && request.auth.token.email == 'neuereatec@gmail.com';
     }
-    function staffDoc() {
-      return signedIn() && exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid));
+    function staffProfile() {
+      return get(/databases/$(database)/documents/staffProfiles/$(request.auth.uid)).data;
+    }
+    function assignedStaff() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/staffProfiles/$(request.auth.uid))
+        && staffProfile().blocked != true
+        && staffProfile().role in ['admin', 'desk', 'support', 'staff'];
     }
     function isStaff() {
-      return adminEmail() || staffDoc();
+      return adminEmail() || assignedStaff();
+    }
+    function isControlAdmin() {
+      return adminEmail() || (assignedStaff() && staffProfile().role == 'admin');
     }
     function customerOwns(customerId) {
       return signedIn() && (
@@ -21,32 +30,32 @@ service cloud.firestore {
     }
 
     match /staffInvites/{email} {
-      allow read: if adminEmail() || (signedIn() && request.auth.token.email.lower() == email);
-      allow write: if adminEmail();
+      allow read: if isControlAdmin() || (signedIn() && request.auth.token.email.lower() == email);
+      allow write: if isControlAdmin();
     }
 
     match /staffProfiles/{uid} {
-      allow read: if adminEmail() || (signedIn() && request.auth.uid == uid);
+      allow read: if isControlAdmin() || (signedIn() && request.auth.uid == uid);
       allow write: if false;
     }
 
     match /orgs/{orgId} {
       allow read: if isStaff();
-      allow write: if adminEmail();
+      allow write: if isControlAdmin();
     }
 
     match /plans/{planId} {
       allow read: if signedIn();
-      allow write: if isStaff();
+      allow write: if isControlAdmin();
     }
 
     match /adminConfig/{doc} {
       allow read: if isStaff();
-      allow write: if adminEmail();
+      allow write: if isControlAdmin();
     }
 
     match /adminAuditLogs/{id} {
-      allow read: if isStaff();
+      allow read: if isControlAdmin();
       allow create: if isStaff();
       allow update, delete: if false;
     }
@@ -60,7 +69,7 @@ service cloud.firestore {
             .hasAny(['paidUntilMs', 'graceUntilMs', 'status', 'balanceDue', 'paidAmount']))
         || (customerOwns(customerId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenMs', 'fcmToken', 'uid']));
-      allow delete: if adminEmail();
+      allow delete: if isControlAdmin();
 
       match /payments/{payId} {
         allow read: if isStaff() || customerOwns(customerId);

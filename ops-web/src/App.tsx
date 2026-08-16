@@ -3,17 +3,18 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './lib/authContext'
 import { consumeGoogleAuthError, googleAuthErrorMessage } from './lib/googleAuth'
 import * as repo from './lib/repo'
-import { ONLINE_AFTER_MS, TCD_URL } from './lib/firebase'
+import { ONLINE_AFTER_MS } from './lib/firebase'
 import { deskPulse } from './lib/desk'
 import type { Customer, IssueTicket, Plan } from './lib/types'
-import { StaffPage } from './StaffPage'
+import { roleLabel } from './lib/roles'
 import { Board } from './Board'
 import { CustomerPage } from './CustomerPage'
 import { ChatDesk } from './ChatDesk'
 import { IssuesDesk } from './IssuesDesk'
 
 export default function App() {
-  const { configured, user, loading, isStaff, isAdmin, signIn, signInWithGoogle, signOut, orgId } = useAuth()
+  const { configured, user, loading, canDesk, canSupport, pendingAccess, signIn, signInWithGoogle, signOut, orgId, role } =
+    useAuth()
   if (!configured) {
     return (
       <div className="auth">
@@ -26,13 +27,14 @@ export default function App() {
   }
   if (loading) return <div className="auth">Opening customer desk…</div>
   if (!user) return <Login signIn={signIn} signInWithGoogle={signInWithGoogle} />
-  if (!isStaff && !isAdmin) {
+  if (pendingAccess) {
     return (
       <div className="auth">
         <div className="auth-card">
-          <h1>Staff only</h1>
+          <h1>Waiting for a role</h1>
           <p className="muted">
-            Signed in as {user.email || 'this Google account'}. Ask neuereatec@gmail.com to add you under Staff in TCD.
+            Signed in as {user.email}. You are on the TCD user list. A control admin must assign Customer desk or
+            Support before you can manage subscribers.
           </p>
           <button className="btn btn-ghost" type="button" onClick={() => void signOut()}>
             Sign out
@@ -41,7 +43,28 @@ export default function App() {
       </div>
     )
   }
-  return <Shell orgId={orgId || 'globalnetwork'} email={user.email || ''} isAdmin={isAdmin} signOut={signOut} />
+  if (!canSupport) {
+    return (
+      <div className="auth">
+        <div className="auth-card">
+          <h1>No desk access yet</h1>
+          <p className="muted">Signed in as {user.email}. Ask a control admin to assign your Google account a role in TCD → Users.</p>
+          <button className="btn btn-ghost" type="button" onClick={() => void signOut()}>
+            Sign out
+          </button>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <Shell
+      orgId={orgId || 'globalnetwork'}
+      email={user.email || ''}
+      canDesk={canDesk}
+      roleLabel={roleLabel(role)}
+      signOut={signOut}
+    />
+  )
 }
 
 function Login({
@@ -84,7 +107,7 @@ function Login({
         <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={56} height={56} className="auth-logo" />
         <p className="eyebrow">GlobalNetwork</p>
         <h1>Customer desk</h1>
-        <p className="muted">Onboard subscribers, collect GYD, grant days, and handle chat.</p>
+        <p className="muted">Google sign-in puts you on the user list. A control admin assigns your role from TCD.</p>
         <input type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="password" required minLength={6} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p className="fail">{error}</p>}
@@ -94,9 +117,7 @@ function Login({
         <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void onGoogle()}>
           {busy ? 'Opening Google…' : 'Continue with Google'}
         </button>
-        <p className="muted tiny">
-          Admin is <strong>neuereatec@gmail.com</strong>. Allow popups for this site.
-        </p>
+        <p className="muted tiny">Allow popups for Google sign-in.</p>
       </form>
     </div>
   )
@@ -105,12 +126,14 @@ function Login({
 function Shell({
   orgId,
   email,
-  isAdmin,
+  canDesk,
+  roleLabel: roleName,
   signOut,
 }: {
   orgId: string
   email: string
-  isAdmin: boolean
+  canDesk: boolean
+  roleLabel: string
   signOut: () => Promise<void>
 }) {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -144,13 +167,15 @@ function Shell({
           <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" />
           <div>
             <strong>GlobalNetwork</strong>
-            <div className="muted tiny">Customer desk</div>
+            <div className="muted tiny">{roleName}</div>
           </div>
         </div>
-        <NavLink to="/" end>
-          Roster
-          <span className="nav-count">{pulse.total}</span>
-        </NavLink>
+        {canDesk && (
+          <NavLink to="/" end>
+            Roster
+            <span className="nav-count">{pulse.total}</span>
+          </NavLink>
+        )}
         <NavLink to="/chat">
           Inbox
           {pulse.unread.length > 0 && <span className="nav-count hot">{pulse.unread.length}</span>}
@@ -159,10 +184,6 @@ function Shell({
           Issues
           {pulse.openIssues > 0 && <span className="nav-count hot">{pulse.openIssues}</span>}
         </NavLink>
-        {isAdmin && <NavLink to="/staff">Staff</NavLink>}
-        <a className="side-link" href={TCD_URL}>
-          Plan catalog
-        </a>
         <div className="side-pulse">
           <p>
             <b>{pulse.active}</b> live
@@ -179,12 +200,29 @@ function Shell({
       <main className="main">
         {error && <p className="fail">{error}</p>}
         <Routes>
-          <Route path="/" element={<Board customers={customers} plans={plans} issues={issues} now={now} />} />
-          <Route path="/c/:id" element={<CustomerPage customers={customers} plans={plans} issues={issues} now={now} />} />
+          <Route
+            path="/"
+            element={
+              canDesk ? (
+                <Board customers={customers} plans={plans} issues={issues} now={now} />
+              ) : (
+                <Navigate to="/chat" replace />
+              )
+            }
+          />
+          <Route
+            path="/c/:id"
+            element={
+              canDesk ? (
+                <CustomerPage customers={customers} plans={plans} issues={issues} now={now} />
+              ) : (
+                <Navigate to="/chat" replace />
+              )
+            }
+          />
           <Route path="/chat" element={<ChatDesk customers={customers} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
-          {isAdmin && <Route path="/staff" element={<StaffPage />} />}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to={canDesk ? '/' : '/chat'} replace />} />
         </Routes>
       </main>
     </div>
