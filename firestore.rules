@@ -20,9 +20,14 @@ service cloud.firestore {
       );
     }
 
-    match /staffProfiles/{uid} {
-      allow read: if isStaff() || (signedIn() && uid == request.auth.uid);
+    match /staffInvites/{email} {
+      allow read: if adminEmail() || (signedIn() && request.auth.token.email.lower() == email);
       allow write: if adminEmail();
+    }
+
+    match /staffProfiles/{uid} {
+      allow read: if adminEmail() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
     }
 
     match /orgs/{orgId} {

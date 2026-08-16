@@ -14,6 +14,10 @@ export function googleProvider(): GoogleAuthProvider {
 
 export function googleAuthErrorMessage(err: unknown): string {
   const code = err instanceof FirebaseError ? err.code : ''
+  const raw = err instanceof Error ? err.message : ''
+  if (code.includes('indexed-db') || /database is closing\/hidden/i.test(raw)) {
+    return 'This browser blocked sign-in storage. Close extra tabs of this site, turn off private mode, then refresh and try again.'
+  }
   switch (code) {
     case 'auth/configuration-not-found':
     case 'auth/operation-not-allowed':

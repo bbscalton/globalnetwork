@@ -4,6 +4,7 @@ import { useAuth } from './lib/authContext'
 import { consumeGoogleAuthError, googleAuthErrorMessage } from './lib/googleAuth'
 import * as repo from './lib/repo'
 import type { ChatMessage, Customer, IssueTicket, Plan } from './lib/types'
+import { StaffPage } from './StaffPage'
 
 export default function App() {
   const { configured, user, loading, isStaff, isAdmin, signIn, signInWithGoogle, signOut, orgId } = useAuth()
@@ -28,8 +29,8 @@ export default function App() {
         <div className="auth-card">
           <h1>Staff only</h1>
           <p className="muted">
-            Signed in as {user.email || 'this Google account'}. Ask neuereatec@gmail.com to add a staffProfiles/
-            {user.uid} document, or sign in with that admin Google account.
+            Signed in as {user.email || 'this Google account'}. Ask neuereatec@gmail.com to add you under Staff
+            in TCD.
           </p>
           <button className="btn btn-ghost" type="button" onClick={() => void signOut()}>
             Sign out
@@ -38,7 +39,7 @@ export default function App() {
       </div>
     )
   }
-  return <Shell orgId={orgId || 'globalnetwork'} email={user.email || ''} signOut={signOut} />
+  return <Shell orgId={orgId || 'globalnetwork'} email={user.email || ''} isAdmin={isAdmin} signOut={signOut} />
 }
 
 function Login({
@@ -59,7 +60,7 @@ function Login({
     try {
       await signIn(email.trim(), password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign in failed')
+      setError(googleAuthErrorMessage(err))
     } finally {
       setBusy(false)
     }
@@ -98,7 +99,17 @@ function Login({
   )
 }
 
-function Shell({ orgId, email, signOut }: { orgId: string; email: string; signOut: () => Promise<void> }) {
+function Shell({
+  orgId,
+  email,
+  isAdmin,
+  signOut,
+}: {
+  orgId: string
+  email: string
+  isAdmin: boolean
+  signOut: () => Promise<void>
+}) {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [issues, setIssues] = useState<IssueTicket[]>([])
@@ -143,6 +154,7 @@ function Shell({ orgId, email, signOut }: { orgId: string; email: string; signOu
         <NavLink to="/chat">Chat</NavLink>
         <NavLink to="/issues">Issues</NavLink>
         <NavLink to="/plans">Plans</NavLink>
+        {isAdmin && <NavLink to="/staff">Staff</NavLink>}
         <p className="muted" style={{ marginTop: '1.5rem', fontSize: '0.8rem' }}>
           {email}
         </p>
@@ -160,6 +172,7 @@ function Shell({ orgId, email, signOut }: { orgId: string; email: string; signOu
           <Route path="/chat" element={<ChatPage customers={customers} />} />
           <Route path="/issues" element={<IssuesPage issues={issues} />} />
           <Route path="/plans" element={<PlansPage plans={plans} />} />
+          {isAdmin && <Route path="/staff" element={<StaffPage />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

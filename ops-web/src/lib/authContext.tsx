@@ -16,6 +16,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { auth, COL, db, FIREBASE_CONFIGURED } from './firebase'
 import { isProjectAdmin } from './admin'
 import { completeGoogleRedirect, signInWithGoogle as startGoogleSignIn } from './googleAuth'
+import { claimStaffAccess } from './repo'
 
 type AuthContextValue = {
   configured: boolean
@@ -68,16 +69,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setOrgId('globalnetwork')
         }
         setUser(next)
-        if (db) {
-          const staff = await getDoc(doc(db, COL.staffProfiles, next.uid)).catch(() => null)
+        let staffOk = admin
+        try {
+          const claimed = await claimStaffAccess()
           if (cancelled) return
-          const staffOk = admin || staff?.exists() === true
+          staffOk = admin || claimed.staff
           setIsStaff(staffOk)
-          setOrgId((staff?.data()?.orgId as string | undefined) ?? 'globalnetwork')
-          if (staff?.data()?.blocked === true) {
-            setBlockedMessage('This staff account is suspended.')
-            await firebaseSignOut(firebaseAuth)
-            return
+          setOrgId(claimed.orgId || 'globalnetwork')
+        } catch {
+          if (db) {
+            const staff = await getDoc(doc(db, COL.staffProfiles, next.uid)).catch(() => null)
+            if (cancelled) return
+            staffOk = admin || staff?.exists() === true
+            setIsStaff(staffOk)
+            setOrgId((staff?.data()?.orgId as string | undefined) ?? 'globalnetwork')
+            if (staff?.data()?.blocked === true) {
+              setBlockedMessage('This staff account is suspended.')
+              await firebaseSignOut(firebaseAuth)
+              return
+            }
           }
         }
         setLoading(false)

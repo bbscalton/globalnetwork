@@ -34,7 +34,13 @@ export async function requireStaff(request: CallableRequest): Promise<{ uid: str
   if (!staff.exists || staff.get("blocked") === true) {
     throw new HttpsError("permission-denied", "Staff access required.");
   }
-  return { ...user, admin: false };
+  return { ...user, admin: staff.get("role") === "admin" };
+}
+
+export async function requireAdmin(request: CallableRequest): Promise<{ uid: string; email: string; admin: boolean }> {
+  const staff = await requireStaff(request);
+  if (!staff.admin) throw new HttpsError("permission-denied", "Admin only.");
+  return staff;
 }
 
 export async function writeAudit(entry: {

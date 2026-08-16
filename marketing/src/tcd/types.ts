@@ -102,7 +102,7 @@ export type PlatformFault = {
   source: string
 }
 
-export type TcdTab = 'overview' | 'accounts' | 'plans' | 'issues' | 'chat' | 'storage' | 'architecture' | 'system'
+export type TcdTab = 'overview' | 'accounts' | 'plans' | 'issues' | 'chat' | 'storage' | 'architecture' | 'system' | 'staff'
 
 export type AdminAuditLogEntry = {
   id: string
@@ -118,4 +118,19 @@ export type StorageDump = {
   bytes: number
   truncated: boolean
   customers: Record<string, { bytes: number; objects: number }>
+}
+
+export type StaffMember = {
+  uid: string
+  email: string
+  role: 'admin' | 'staff' | string
+  blocked: boolean
+  orgId: string
+}
+
+export type StaffInvite = {
+  email: string
+  role: 'admin' | 'staff' | string
+  invitedBy: string
+  atMs: number
 }

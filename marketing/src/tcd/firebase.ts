@@ -3,8 +3,8 @@ import {
   browserLocalPersistence,
   browserPopupRedirectResolver,
   getAuth,
-  indexedDBLocalPersistence,
   initializeAuth,
+  setPersistence,
   type Auth,
 } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
@@ -27,14 +27,17 @@ const firebaseConfig = {
 }
 
 function createAuth(firebaseApp: FirebaseApp): Auth {
+  let instance: Auth
   try {
-    return initializeAuth(firebaseApp, {
-      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+    instance = initializeAuth(firebaseApp, {
+      persistence: browserLocalPersistence,
       popupRedirectResolver: browserPopupRedirectResolver,
     })
   } catch {
-    return getAuth(firebaseApp)
+    instance = getAuth(firebaseApp)
   }
+  void setPersistence(instance, browserLocalPersistence).catch(() => undefined)
+  return instance
 }
 
 export const app = FIREBASE_CONFIGURED ? initializeApp(firebaseConfig) : null

@@ -8,6 +8,7 @@ import { IssuesPanel } from './IssuesPanel'
 import { ChatPanel } from './ChatPanel'
 import { StoragePanel } from './StoragePanel'
 import { SystemPanel } from './SystemPanel'
+import { StaffPanel } from './StaffPanel'
 import { MARKETING_URL, OPS_WEB_URL, TCD_URL } from './firebase'
 import * as repo from './repo'
 import type {
@@ -70,8 +71,8 @@ export function TcdApp() {
           <p className="eyebrow eyebrow-on-dark">GlobalNetwork Ops</p>
           <h1>Staff only</h1>
           <p className="muted on-dark">
-            Signed in as {user.email || 'this Google account'}. Use neuereatec@gmail.com, or ask that admin to add
-            a staffProfiles/{user.uid} document.
+            Signed in as {user.email || 'this Google account'}. Ask neuereatec@gmail.com to add you under Staff
+            in TCD.
           </p>
           <button className="btn btn-ghost-on-dark" type="button" onClick={() => void signOut()}>
             Sign out
@@ -123,7 +124,7 @@ function TcdLogin({
     try {
       await signIn(email.trim(), password)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed')
+      setError(googleAuthErrorMessage(err))
     } finally {
       setBusy(false)
     }
@@ -326,6 +327,7 @@ function TcdDashboard({
     ['chat', 'Chat'],
     ['storage', 'Storage'],
     ['system', 'System'],
+    ...(isAdmin ? ([['staff', 'Staff']] as Array<[TcdTab, string]>) : []),
     ['architecture', 'Architecture'],
   ]
 
@@ -506,6 +508,9 @@ function TcdDashboard({
         {tab === 'storage' && canManage && <StoragePanel busy={busy} onBusy={setBusy} onError={setError} />}
         {tab === 'system' && canManage && (
           <SystemPanel busy={busy} onBusy={setBusy} onStatus={setStatusMsg} onError={setError} />
+        )}
+        {tab === 'staff' && isAdmin && (
+          <StaffPanel busy={busy} onBusy={setBusy} onStatus={setStatusMsg} onError={setError} />
         )}
         {tab === 'architecture' && canManage && (
           <div className="tcd-card tcd-card-wide tcd-arch-card">
