@@ -41,17 +41,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = isProjectAdmin(user)
 
+  const firebaseAuth = auth
   useEffect(() => {
-    if (!FIREBASE_CONFIGURED || !auth) {
+    if (!FIREBASE_CONFIGURED || !firebaseAuth) {
       setLoading(false)
       return
     }
     let cancelled = false
     let unsub = () => {}
     void (async () => {
-      await completeGoogleRedirect(auth)
+      await completeGoogleRedirect(firebaseAuth)
       if (cancelled) return
-      unsub = onAuthStateChanged(auth, async (next) => {
+      unsub = onAuthStateChanged(firebaseAuth, async (next) => {
         setBlockedMessage(null)
         if (!next) {
           setUser(null)
@@ -75,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setOrgId((staff?.data()?.orgId as string | undefined) ?? 'globalnetwork')
           if (staff?.data()?.blocked === true) {
             setBlockedMessage('This staff account is suspended.')
-            await firebaseSignOut(auth)
+            await firebaseSignOut(firebaseAuth)
             return
           }
         }
@@ -86,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true
       unsub()
     }
-  }, [])
+  }, [firebaseAuth])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -98,18 +99,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       blockedMessage,
       orgId,
       signIn: async (email, password) => {
-        if (!auth) throw new Error('Firebase is not configured for this build.')
-        await signInWithEmailAndPassword(auth, email, password)
+        if (!firebaseAuth) throw new Error('Firebase is not configured for this build.')
+        await signInWithEmailAndPassword(firebaseAuth, email, password)
       },
       signInWithGoogle: async () => {
-        if (!auth) throw new Error('Firebase is not configured for this build.')
-        await startGoogleSignIn(auth)
+        if (!firebaseAuth) throw new Error('Firebase is not configured for this build.')
+        await startGoogleSignIn(firebaseAuth)
       },
       signOut: async () => {
-        if (auth) await firebaseSignOut(auth)
+        if (firebaseAuth) await firebaseSignOut(firebaseAuth)
       },
     }),
-    [user, loading, isAdmin, isStaff, blockedMessage, orgId],
+    [user, loading, isAdmin, isStaff, blockedMessage, orgId, firebaseAuth],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
