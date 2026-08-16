@@ -13,7 +13,7 @@ import 'theme.dart';
 const firebaseReady = false;
 const r2BaseUrl = String.fromEnvironment(
   'R2_BASE',
-  defaultValue: 'https://globalnetwork-media.workers.dev',
+  defaultValue: 'https://globalnetwork-media.neuereatec.workers.dev',
 );
 
 Future<void> main() async {

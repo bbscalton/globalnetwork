@@ -15,13 +15,13 @@
     {
       "binding": "DB",
       "database_name": "globalnetwork-ops",
-      "database_id": "REPLACE_WITH_D1_ID"
+      "database_id": "662db60e-3621-4ada-8ca8-2fed88c3951c"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "EDGE_CACHE",
-      "id": "REPLACE_WITH_KV_ID"
+      "id": "db4b61662e0243fe8e9e707b2a397e1f"
     }
   ]
 }

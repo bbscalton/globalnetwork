@@ -7,6 +7,7 @@ export type TcdCheck = {
   status: TcdCheckStatus
   message: string
   latencyMs?: number | null
+  optional?: boolean
 }
 
 export type TcdReport = {

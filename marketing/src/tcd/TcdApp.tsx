@@ -274,7 +274,8 @@ function TcdDashboard({
 
   const overallStatus = useMemo<TcdCheckStatus | 'checking'>(() => {
     if (!report) return 'checking'
-    return worst([...report.checks.map((c) => c.status), ...siteUptime.map((s) => s.status)]) ?? 'ok'
+    const required = report.checks.filter((c) => !c.optional).map((c) => c.status)
+    return worst([...required, ...siteUptime.map((s) => s.status)]) ?? 'ok'
   }, [report, siteUptime])
 
   const statusCopy: Record<TcdCheckStatus | 'checking', { title: string; sub: string }> = {
@@ -290,6 +291,7 @@ function TcdDashboard({
   const platformFaults = useMemo((): PlatformFault[] => {
     const faults: PlatformFault[] = []
     report?.checks.forEach((c) => {
+      if (c.optional && c.status !== 'fail') return
       if (c.status === 'fail') faults.push({ id: c.id, severity: 'critical', title: c.label, detail: c.message, source: 'health-check' })
       else if (c.status === 'warn') faults.push({ id: c.id, severity: 'warning', title: c.label, detail: c.message, source: 'health-check' })
     })

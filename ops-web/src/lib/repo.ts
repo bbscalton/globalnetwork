@@ -333,6 +333,7 @@ export async function runTcdHealthCheck(): Promise<TcdReport> {
     group: 'fleet',
     status: 'warn',
     message: 'Flutter app not published yet — scaffold is in customer-app/.',
+    optional: true,
   })
   checks.push({
     id: 'droplet',
@@ -340,6 +341,7 @@ export async function runTcdHealthCheck(): Promise<TcdReport> {
     group: 'platform',
     status: 'warn',
     message: 'Optional for ISP ops. Not required unless you add TURN/staging later.',
+    optional: true,
   })
 
   return { generatedAtMs: Date.now(), checks }

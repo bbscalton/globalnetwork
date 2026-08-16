@@ -2,7 +2,7 @@ import { onCall, onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { requireStaff, sendToToken, db } from "./context";
 
-export const platformHealth = onRequest({ cors: true }, async (_req, res) => {
+export const platformHealth = onRequest({ cors: true, invoker: "public", region: "us-central1" }, async (_req, res) => {
   const started = Date.now();
   try {
     await db.collection("plans").limit(1).get();

@@ -1,7 +1,7 @@
 {
   "name": "globalnetwork-functions",
   "description": "GlobalNetwork Cloud Functions — subscriptions, FCM, health",
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",

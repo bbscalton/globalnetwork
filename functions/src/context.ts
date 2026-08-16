@@ -6,11 +6,18 @@ export const ADMIN_EMAIL = "neuereatec@gmail.com";
 export const DEFAULT_ORG_ID = "globalnetwork";
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
-if (!admin.apps.length) {
-  admin.initializeApp();
+export function getDb(): FirebaseFirestore.Firestore {
+  if (!admin.apps.length) admin.initializeApp();
+  return admin.firestore();
 }
 
-export const db = admin.firestore();
+export const db = new Proxy({} as FirebaseFirestore.Firestore, {
+  get(_target, prop, _receiver) {
+    const real = getDb() as unknown as Record<PropertyKey, unknown>;
+    const value = real[prop];
+    return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(real) : value;
+  },
+}) as FirebaseFirestore.Firestore;
 
 export function requireAuth(request: CallableRequest): { uid: string; email: string } {
   const uid = request.auth?.uid;
