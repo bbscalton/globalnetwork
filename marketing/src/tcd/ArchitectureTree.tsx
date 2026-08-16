@@ -55,8 +55,8 @@ const COLUMNS: { id: NodeDef['column']; header: string; num: string }[] = [
 const NODES: NodeDef[] = [
   {
     id: 'ops-web',
-    label: 'Ops web',
-    subtitle: 'Staff dashboard in the browser.',
+    label: 'Customer desk',
+    subtitle: 'Staff workspace for subscribers, renewals, and chat.',
     group: 'client',
     column: 'apps',
     siteIds: ['ops-web'],
@@ -64,7 +64,7 @@ const NODES: NodeDef[] = [
   {
     id: 'tcd-app',
     label: 'TCD console',
-    subtitle: 'This operator dashboard you are using.',
+    subtitle: 'ISP plan catalog, health, and control plane.',
     group: 'client',
     column: 'apps',
     siteIds: ['tcd-page'],

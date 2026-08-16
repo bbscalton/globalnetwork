@@ -85,11 +85,15 @@ export function AccountsPanel({
   return (
     <div className="tcd-card tcd-card-wide">
       <div className="tcd-card-head">
-        <h2>Accounts</h2>
+        <h2>Fleet</h2>
         <button className="btn btn-primary" type="button" onClick={() => setCreating(true)}>
           New customer
         </button>
       </div>
+      <p className="muted small" style={{ marginTop: '-0.4rem', marginBottom: '1rem' }}>
+        Day-to-day renewals, collections, and chat live in the Customer desk. This is a control-plane snapshot of
+        who is on the network.
+      </p>
       <input
         placeholder="Search name, phone, email…"
         value={q}

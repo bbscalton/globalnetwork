@@ -16,10 +16,10 @@ export default function App() {
         </nav>
         <div className="nav-ctas">
           <a className="btn btn-ghost" href={TCD}>
-            TCD Ops
+            Plan control
           </a>
           <a className="btn btn-primary" href={OPS}>
-            Staff dashboard
+            Customer desk
           </a>
         </div>
       </header>
@@ -36,10 +36,10 @@ export default function App() {
           </p>
           <div className="hero-ctas">
             <a className="btn btn-primary btn-lg" href={OPS}>
-              Open staff dashboard
+              Open customer desk
             </a>
             <a className="btn btn-ghost-on-dark btn-lg" href={TCD}>
-              Live architecture
+              Manage subscription plans
             </a>
           </div>
         </div>
@@ -79,7 +79,7 @@ export default function App() {
           </article>
           <article className="glass-card">
             <h3>Realtime chat</h3>
-            <p className="muted">Talk to the subscriber from TCD or ops-web. Images go to R2.</p>
+            <p className="muted">Talk to the subscriber from the customer desk. Images go to R2.</p>
           </article>
           <article className="glass-card">
             <h3>Issue photos</h3>

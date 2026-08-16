@@ -102,7 +102,7 @@ export type PlatformFault = {
   source: string
 }
 
-export type TcdTab = 'overview' | 'accounts' | 'plans' | 'issues' | 'chat' | 'storage' | 'architecture' | 'system' | 'staff'
+export type TcdTab = 'plans' | 'overview' | 'fleet' | 'storage' | 'architecture' | 'system' | 'staff'
 
 export type AdminAuditLogEntry = {
   id: string

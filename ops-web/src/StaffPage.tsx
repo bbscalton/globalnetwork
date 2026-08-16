@@ -39,7 +39,7 @@ export function StaffPage() {
   return (
     <>
       <h1>Staff &amp; roles</h1>
-      <p className="muted">Invite Google accounts or create an email/password login. Only neuereatec@gmail.com can manage this list.</p>
+      <p className="muted">Invite Google accounts or create an email/password login for the customer desk. Only neuereatec@gmail.com can manage this list.</p>
       {error && <p className="fail">{error}</p>}
       {msg && <p className="muted">{msg}</p>}
       <div className="card" style={{ marginTop: 16, display: 'grid', gap: 8, maxWidth: 520 }}>

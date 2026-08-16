@@ -18,6 +18,7 @@ import type {
   Customer,
   CustomerStatus,
   IssueTicket,
+  Payment,
   Plan,
   SiteUptime,
   StaffInvite,
@@ -112,6 +113,35 @@ export function observeChat(customerId: string, onData: (rows: ChatMessage[]) =>
       }),
     )
   })
+}
+
+export function observePayments(customerId: string, onData: (rows: Payment[]) => void): Unsubscribe {
+  const database = requireDb()
+  const q = query(collection(database, COL.customers, customerId, COL.payments), orderBy('atMs', 'desc'))
+  return onSnapshot(q, (snap) => {
+    onData(
+      snap.docs.map((d) => {
+        const data = d.data()
+        return {
+          id: d.id,
+          amount: Number(data.amount ?? 0),
+          kind: data.kind === 'partial' || data.kind === 'grace' ? data.kind : 'full',
+          daysGranted: Number(data.daysGranted ?? 0),
+          note: String(data.note ?? ''),
+          atMs: Number(data.atMs ?? 0),
+          byUid: String(data.byUid ?? ''),
+        }
+      }),
+    )
+  })
+}
+
+export async function setIssueStatus(
+  customerId: string,
+  issueId: string,
+  status: IssueTicket['status'],
+): Promise<void> {
+  await updateDoc(doc(requireDb(), COL.customers, customerId, COL.issues, issueId), { status })
 }
 
 export function observeIssues(onData: (rows: IssueTicket[]) => void): Unsubscribe {
