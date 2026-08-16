@@ -282,7 +282,10 @@ function resolveNodeStatus(
 ): TcdCheckStatus {
   const fromChecks = (node.checkIds ?? [])
     .map((id) => checks.find((c) => c.id === id))
-    .filter((c): c is TcdCheck => Boolean(c) && (!c.optional || c.status === 'fail'))
+    .filter((c): c is TcdCheck => {
+      if (!c) return false
+      return !c.optional || c.status === 'fail'
+    })
     .map((c) => c.status)
   const fromSites = (node.siteIds ?? []).map((id) => siteStatuses[id] ?? 'ok')
   const all = [...fromChecks, ...fromSites]
