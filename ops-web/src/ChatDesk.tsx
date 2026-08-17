@@ -4,6 +4,7 @@ import type { ChatMessage, Customer, IssueTicket } from './lib/types'
 import * as repo from './lib/repo'
 import { ChatBubbleBody, kindOf } from './ChatMedia'
 import { fmtWhen, initials, statusTone } from './lib/desk'
+import { customerPin, displayAddress } from './lib/geo'
 
 const ISSUE_LABEL: Record<IssueTicket['status'], string> = {
   open: 'Still open',
@@ -14,6 +15,7 @@ const ISSUE_LABEL: Record<IssueTicket['status'], string> = {
 function previewOf(c: Customer): string {
   if (c.lastChatKind === 'voice') return 'Voice note'
   if (c.lastChatKind === 'video') return 'Video clip'
+  if (c.lastChatKind === 'location') return 'Shared location'
   if (c.lastChatPreview) return c.lastChatPreview
   if ((c.unreadStaff ?? 0) > 0) return 'New message'
   return c.planName || 'No plan'
@@ -124,12 +126,14 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
                   {' · '}
                   {current.planName || 'No plan'}
                   {current.phone ? ` · ${current.phone}` : ''}
+                  {customerPin(current) ? ` · ${displayAddress(current)}` : ''}
                 </p>
               )}
             </div>
             {current && (
               <div className="chat-head-actions">
                 <Link to={`/c/${current.id}`}>Open record</Link>
+                {customerPin(current) && <Link to={`/field?c=${current.id}`}>Field map</Link>}
                 <button
                   className="btn btn-ghost"
                   type="button"
@@ -159,7 +163,7 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
                 <span className="muted tiny">
                   {m.from === 'owner' ? 'You' : m.from === 'bot' ? 'Desk bot' : 'Customer'} · {fmtWhen(m.createdAtMs)}
                 </span>
-                <ChatBubbleBody m={m} />
+                <ChatBubbleBody m={m} customerId={selected} />
               </div>
             ))}
             {messages.length === 0 && <p className="empty">No messages yet in this thread.</p>}
@@ -237,7 +241,7 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
                   <span className="muted tiny">
                     {kindOf(m) === 'video' ? 'Video' : 'Voice'} · {fmtWhen(m.createdAtMs)}
                   </span>
-                  <ChatBubbleBody m={m} />
+                  <ChatBubbleBody m={m} customerId={selected} />
                 </div>
               ))}
             </div>

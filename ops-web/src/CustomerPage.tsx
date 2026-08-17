@@ -5,6 +5,7 @@ import * as repo from './lib/repo'
 import { ChatBubbleBody } from './ChatMedia'
 import { cyclePct, fmtDate, fmtWhen, initials, statusTone } from './lib/desk'
 import { AuthImage } from './lib/AuthImage'
+import { customerPin, displayAddress, looksLikeCoordinates } from './lib/geo'
 
 export function CustomerPage({
   customers,
@@ -121,7 +122,13 @@ export function CustomerPage({
           <p className="muted">
             {customer.phone || 'No phone'} · {customer.email || 'No email'}
             <br />
-            {customer.address || 'No site address'}
+            {displayAddress(customer)}
+            {customerPin(customer) && (
+              <>
+                {' · '}
+                <Link to={`/field?c=${customer.id}`}>Field map</Link>
+              </>
+            )}
           </p>
         </div>
         <div className="record-status">
@@ -284,7 +291,7 @@ export function CustomerPage({
           <label>
             Address / site
             <input
-              defaultValue={customer.address}
+              defaultValue={looksLikeCoordinates(customer.address) ? displayAddress(customer) : customer.address}
               key={`${customer.id}-address`}
               onBlur={(e) => {
                 const address = e.target.value.trim()
@@ -353,7 +360,7 @@ export function CustomerPage({
             {messages.map((m) => (
               <div key={m.id} className={`bubble ${m.from}`}>
                 <span className="muted tiny">{m.from === 'owner' ? 'You' : m.from === 'bot' ? 'Desk bot' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
-                <ChatBubbleBody m={m} />
+                <ChatBubbleBody m={m} customerId={customer.id} />
               </div>
             ))}
             {messages.length === 0 && <p className="muted">No messages yet.</p>}

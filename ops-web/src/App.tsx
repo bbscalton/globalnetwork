@@ -9,11 +9,13 @@ import type { Customer, IssueTicket, Plan } from './lib/types'
 import { Board } from './Board'
 import { CustomerPage } from './CustomerPage'
 import { ChatDesk } from './ChatDesk'
+import { FieldMap } from './FieldMap'
 import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
 import { AccountsDesk } from './AccountsDesk'
 import { DevicesDesk } from './DevicesDesk'
 import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
+import { customerPin } from './lib/geo'
 
 export default function App() {
   const { configured, user, loading, linking, isOwner, deskRole, member, linkError, signIn, signInWithGoogle, signOut, orgId } = useAuth()
@@ -201,6 +203,10 @@ function Shell({
           Issues
           {pulse.openIssues > 0 && <span className="nav-count hot">{pulse.openIssues}</span>}
         </NavLink>
+        <NavLink to="/field">
+          Field map
+          <span className="nav-count">{customers.filter((c) => customerPin(c)).length}</span>
+        </NavLink>
         <NavLink to="/plans">Plans</NavLink>
         <NavLink to="/devices">
           Devices
@@ -227,6 +233,7 @@ function Shell({
           <Route path="/c/:id" element={<CustomerPage customers={customers} plans={plans} issues={issues} now={now} />} />
           <Route path="/chat" element={<ChatDesk customers={customers} issues={issues} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
+          <Route path="/field" element={<FieldMap customers={customers} issues={issues} />} />
           <Route path="/plans" element={<PlansDesk plans={plans} customers={customers} now={now} />} />
           <Route path="/devices" element={<DevicesDesk />} />
           <Route path="/accounts" element={<AccountsDesk />} />

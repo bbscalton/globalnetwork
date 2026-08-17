@@ -4,14 +4,16 @@ import { logger } from "firebase-functions";
 import { db, sendToOwners, sendToToken } from "./context";
 
 const BOT_COOLDOWN_MS = 40_000;
+const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
 
 function fromOwner(from: string): boolean {
   return from === "owner" || from === "staff";
 }
 
-function chatKind(data: { kind?: unknown; mediaUrl?: unknown }): string {
+function chatKind(data: { kind?: unknown; mediaUrl?: unknown; lat?: unknown }): string {
   const kind = String(data.kind ?? "text");
-  if (kind === "voice" || kind === "video" || kind === "text") return kind;
+  if (kind === "voice" || kind === "video" || kind === "text" || kind === "location") return kind;
+  if (data.lat != null) return "location";
   const url = String(data.mediaUrl ?? "").toLowerCase();
   if (url.includes("video") || url.includes(".mp4")) return "video";
   if (url.includes("voice") || url.includes(".m4a") || url.includes("audio")) return "voice";
@@ -21,34 +23,42 @@ function chatKind(data: { kind?: unknown; mediaUrl?: unknown }): string {
 function previewFor(kind: string, text: string): string {
   if (kind === "voice") return "Voice note";
   if (kind === "video") return "Video clip";
+  if (kind === "location") return "Shared location";
   return text.slice(0, 80) || "Chat message";
 }
 
-function botReply(opts: {
-  name: string;
-  kind: string;
-  text: string;
-  status: string;
-  firstCover: boolean;
-}): string {
-  const who = opts.name.split(" ")[0] || "there";
-  if (opts.kind === "voice") {
-    return `${who}, I saved your voice note on the GlobalNetwork desk. A live agent will listen as soon as they take over this chat. Stay here — tell me if the line is fully down or just slow.`;
+function nameLooksMissing(name: string, email: string): boolean {
+  const n = name.trim();
+  if (n.length < 2) return true;
+  if (n.includes("@") || /^customer$/i.test(n)) return true;
+  const local = (email.split("@")[0] || "").replace(/[._]/g, " ");
+  return n.toLowerCase() === local.toLowerCase();
+}
+
+function looksLikePersonName(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 2 || t.length > 48) return false;
+  if (/https?:|@|\d{3,}/.test(t)) return false;
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 4) return false;
+  if (words.length === 1 && /^(hi|hey|hello|yes|no|ok|thanks|down|slow)$/i.test(t)) return false;
+  return /^[\p{L}][\p{L}\s'.-]+$/u.test(t);
+}
+
+function botIntro(hasName: boolean, hasPin: boolean): string {
+  const bits = [
+    "GlobalNetwork desk bot here until a live agent takes over.",
+  ];
+  if (!hasName) bits.push("What name should we put on this report?");
+  if (!hasPin) {
+    bits.push(
+      hasName
+        ? "Optional: tap Share location so we can send a technician to the right village. You can also type All Saints, Potters, Bolans, Jennings — we will not store raw GPS as your address."
+        : "After your name, you can optionally share location so a technician can find the CPE.",
+    );
   }
-  if (opts.kind === "video") {
-    return `${who}, your video clip is on the desk so we can see what you are seeing. I will keep this chat until a live agent joins. If it is dark, send another clip facing the CPE lights.`;
-  }
-  const body = opts.text.toLowerCase();
-  if (opts.status === "expired" || opts.status === "suspended" || body.includes("pay") || body.includes("bill")) {
-    return `${who}, I have this. If the account is expired or on hold, paying the current cycle is what restores the line. A live agent can confirm once they take over. Leave this chat open.`;
-  }
-  if (body.includes("slow") || body.includes("down") || body.includes("outage") || body.includes("happen")) {
-    return `${who}, logged. I am the desk bot covering until a GlobalNetwork agent takes over. Tell me: lights on the radio / router, and how long it has been like this.`;
-  }
-  if (opts.firstCover) {
-    return `GlobalNetwork desk bot here. A live agent has not joined yet, so I will keep you company and log this. Send a voice note or a short clip of the problem if you can.`;
-  }
-  return `Got it — still on the desk. A live agent will take over this chat. Reply here rather than calling unless it is an emergency.`;
+  bits.push("A voice note or a short clip of the problem also helps.");
+  return bits.join(" ");
 }
 
 async function ensureChatIssue(customerId: string, name: string, kind: string, text: string): Promise<void> {
@@ -59,11 +69,20 @@ async function ensureChatIssue(customerId: string, name: string, kind: string, t
     const ticket = await customerRef.collection("issues").doc(existingId).get();
     if (ticket.exists && String(ticket.get("status") ?? "") !== "resolved") return;
   }
-  const title = kind === "voice" ? "Voice report from chat" : kind === "video" ? "Video report from chat" : "Reported in chat";
+  const title =
+    kind === "voice"
+      ? "Voice report from chat"
+      : kind === "video"
+        ? "Video report from chat"
+        : kind === "location"
+          ? "Location shared for a technician"
+          : "Reported in chat";
   const body =
     kind === "text"
       ? text.slice(0, 400)
-      : `${kind === "video" ? "Customer sent a video clip" : "Customer sent a voice note"}${text && !/^(voice note|video clip)$/i.test(text) ? `: ${text.slice(0, 240)}` : "."}`;
+      : kind === "location"
+        ? `Customer shared a map pin${text ? `: ${text.slice(0, 240)}` : "."}`
+        : `${kind === "video" ? "Customer sent a video clip" : "Customer sent a voice note"}${text && !/^(voice note|video clip)$/i.test(text) ? `: ${text.slice(0, 240)}` : "."}`;
   const ref = await customerRef.collection("issues").add({
     title,
     body,
@@ -127,6 +146,19 @@ export const onChatCreated = onDocumentCreated(
       lastChatFrom: from,
     });
 
+    const lat = Number(data.lat ?? Number.NaN);
+    const lng = Number(data.lng ?? Number.NaN);
+    if (kind === "location" && Number.isFinite(lat) && Number.isFinite(lng)) {
+      const label = text && !/^-?\d+\.\d+/.test(text) ? text : "Shared pin in Antigua";
+      const currentAddress = String(customer.get("address") ?? "");
+      await customerRef.update({
+        lat,
+        lng,
+        locationLabel: label,
+        ...(COORD.test(currentAddress) || !currentAddress ? { address: label } : {}),
+      });
+    }
+
     if (from === "bot") {
       await sendToToken(customer.get("fcmToken") as string | undefined, "GlobalNetwork", preview, {
         type: "chat",
@@ -155,7 +187,11 @@ export const onChatCreated = onDocumentCreated(
     const agentLive = customer.get("chatAgentLive") === true;
     const lastBot = Number(customer.get("lastBotReplyMs") ?? 0);
     if (agentLive) return;
-    if (now - lastBot < BOT_COOLDOWN_MS && kind === "text") return;
+
+    const missingName = nameLooksMissing(String(customer.get("name") ?? ""), String(customer.get("email") ?? ""));
+    const hasPin = Number.isFinite(Number(customer.get("lat"))) || kind === "location";
+    const gathering = missingName || (!hasPin && lastBot === 0) || kind === "location";
+    if (!gathering && now - lastBot < BOT_COOLDOWN_MS && kind === "text") return;
 
     try {
       const problem =
@@ -164,13 +200,35 @@ export const onChatCreated = onDocumentCreated(
       if (problem) {
         await ensureChatIssue(customerId, String(customer.get("name") ?? "Customer"), kind, text);
       }
-      const reply = botReply({
-        name: String(customer.get("name") ?? "there"),
-        kind,
-        text,
-        status: String(customer.get("status") ?? ""),
-        firstCover: lastBot === 0,
-      });
+
+      let reply = "";
+      if (missingName && kind === "text" && looksLikePersonName(text)) {
+        await customerRef.update({ name: text.trim() });
+        reply = hasPin
+          ? `Thanks ${text.trim().split(" ")[0]}. I have your pin on the technician map. Stay in this chat until a live agent joins.`
+          : `Thanks ${text.trim().split(" ")[0]}. Optional next: tap Share location so we can send a technician to the village, or type the village name (All Saints, Potters, Bolans…).`;
+      } else if (kind === "location") {
+        reply = missingName
+          ? "Pin is on the field map. What name should we put on this report?"
+          : `${String(customer.get("name") ?? "Thanks").split(" ")[0]}, the technician map has your pin. A live agent will take this if they join.`;
+      } else if (lastBot === 0) {
+        reply = botIntro(!missingName, hasPin);
+      } else if (missingName) {
+        reply = "I still need the name for this account. Reply with first and last name if you can.";
+      } else if (!hasPin && /village|location|where|address|all saints|potters|bolans|jennings/i.test(text)) {
+        await customerRef.update({ address: text.trim(), locationLabel: text.trim() });
+        reply = "Village saved on the record. A shared pin is even better if you can tap Share location.";
+      } else {
+        const who = String(customer.get("name") ?? "there").split(" ")[0] || "there";
+        if (kind === "voice") {
+          reply = `${who}, voice note is on the desk. Optional: share location so we can send a technician.`;
+        } else if (kind === "video") {
+          reply = `${who}, clip saved. Optional: share location so we can find the CPE.`;
+        } else {
+          reply = `${who}, logged. A live agent will take over this chat. Optional: share location if a technician visit is needed.`;
+        }
+      }
+
       await customerRef.collection("chatMessages").add({
         from: "bot",
         text: reply,

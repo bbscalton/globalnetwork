@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/customer.dart';
 import '../services/api.dart';
+import '../services/place.dart';
 import '../theme.dart';
 
 class RegistrationWizard extends StatefulWidget {
@@ -33,6 +34,10 @@ class _RegistrationWizardState extends State<RegistrationWizard> {
   Uint8List? billingBytes;
   String? error;
   var busy = false;
+  var locating = false;
+  double? pinLat;
+  double? pinLng;
+  var pinLabel = '';
 
   static const titles = [
     'Join GlobalNetwork',
@@ -50,6 +55,12 @@ class _RegistrationWizardState extends State<RegistrationWizard> {
     name.text = widget.account.name;
     phone.text = widget.account.phone;
     address.text = widget.account.address;
+    pinLat = widget.account.lat;
+    pinLng = widget.account.lng;
+    pinLabel = widget.account.locationLabel;
+    if (looksLikeCoordinates(address.text)) {
+      _hydrateCoords(address.text);
+    }
   }
 
   @override
@@ -67,7 +78,7 @@ class _RegistrationWizardState extends State<RegistrationWizard> {
       case 2:
         return phone.text.trim().length >= 7;
       case 3:
-        return address.text.trim().length >= 4;
+        return address.text.trim().length >= 3 && !looksLikeCoordinates(address.text);
       case 4:
         return idBytes != null;
       case 5:
@@ -112,6 +123,44 @@ class _RegistrationWizardState extends State<RegistrationWizard> {
     });
   }
 
+  Future<void> _hydrateCoords(String raw) async {
+    final parsed = parseCoordinates(raw);
+    if (parsed == null) return;
+    try {
+      final label = await reverseGeocode(parsed.lat, parsed.lng);
+      if (!mounted) return;
+      setState(() {
+        address.text = label;
+        pinLat = parsed.lat;
+        pinLng = parsed.lng;
+        pinLabel = label;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _shareSite() async {
+    setState(() {
+      locating = true;
+      error = null;
+    });
+    try {
+      final pin = await captureSitePin();
+      if (!mounted) return;
+      setState(() {
+        pinLat = pin.lat;
+        pinLng = pin.lng;
+        pinLabel = pin.label;
+        if (address.text.trim().isEmpty || looksLikeCoordinates(address.text)) {
+          address.text = pin.label;
+        }
+      });
+    } catch (e) {
+      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => locating = false);
+    }
+  }
+
   Future<void> _submit() async {
     final idPhoto = idBytes;
     final billPhoto = billingBytes;
@@ -138,6 +187,9 @@ class _RegistrationWizardState extends State<RegistrationWizard> {
         address: address.text.trim(),
         idPhotoUrl: idUrl,
         billingPhotoUrl: billUrl,
+        lat: pinLat,
+        lng: pinLng,
+        locationLabel: pinLabel.isNotEmpty ? pinLabel : address.text.trim(),
       );
     } catch (e) {
       setState(() => error = e.toString().replaceFirst('Exception: ', ''));
@@ -230,11 +282,38 @@ class _RegistrationWizardState extends State<RegistrationWizard> {
           onChanged: (_) => setState(() {}),
         );
       case 3:
-        return TextField(
-          controller: address,
-          decoration: const InputDecoration(labelText: 'Home / installation address'),
-          maxLines: 3,
-          onChanged: (_) => setState(() {}),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Type the village or area — All Saints, Potters, Bolans, Jennings — not GPS numbers. Share a pin if you want a technician to find the house.',
+              style: TextStyle(height: 1.45, color: Colors.white70),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: address,
+              decoration: const InputDecoration(labelText: 'Village / area name'),
+              textCapitalization: TextCapitalization.words,
+              maxLines: 2,
+              onChanged: (value) {
+                setState(() {});
+                if (looksLikeCoordinates(value)) _hydrateCoords(value);
+              },
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: locating || busy ? null : _shareSite,
+              icon: Icon(locating ? Icons.hourglass_top : Icons.my_location),
+              label: Text(locating ? 'Finding this site…' : (pinLat == null ? 'Share location (optional)' : 'Update shared pin')),
+            ),
+            if (pinLat != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Pin saved for the technician map. Address shown as ${pinLabel.isEmpty ? address.text.trim() : pinLabel}.',
+                style: const TextStyle(color: GnTheme.cyan, height: 1.4),
+              ),
+            ],
+          ],
         );
       case 4:
         return _photoStep(
@@ -256,6 +335,8 @@ class _RegistrationWizardState extends State<RegistrationWizard> {
             const SizedBox(height: 6),
             Text(phone.text.trim()),
             Text(address.text.trim()),
+            if (pinLat != null)
+              Text('Technician pin ready · $pinLabel', style: const TextStyle(color: GnTheme.cyan)),
             const SizedBox(height: 16),
             const Text('ID and billing photos are attached. Send this to the owner desk for approval.'),
           ],

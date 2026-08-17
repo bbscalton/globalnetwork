@@ -10,7 +10,8 @@ function durationLabel(ms: number | undefined) {
   return `${m}:${s}`
 }
 
-export function kindOf(m: Pick<ChatMessage, 'kind' | 'mediaUrl' | 'text'>): 'voice' | 'video' | 'text' {
+export function kindOf(m: Pick<ChatMessage, 'kind' | 'mediaUrl' | 'text' | 'lat'>): 'voice' | 'video' | 'text' | 'location' {
+  if (m.kind === 'location' || (m.lat != null && Number.isFinite(m.lat))) return 'location'
   if (m.kind === 'voice' || m.kind === 'video' || m.kind === 'text') return m.kind
   const url = (m.mediaUrl ?? '').toLowerCase()
   const text = (m.text ?? '').toLowerCase()
@@ -193,7 +194,7 @@ function VideoPlayer({ url }: { url: string }) {
   )
 }
 
-export function ChatBubbleBody({ m }: { m: ChatMessage }) {
+export function ChatBubbleBody({ m, customerId }: { m: ChatMessage; customerId?: string }) {
   const kind = kindOf(m)
   if (kind === 'voice' && m.mediaUrl) {
     return (
@@ -207,6 +208,23 @@ export function ChatBubbleBody({ m }: { m: ChatMessage }) {
       <div className="media-block">
         <VideoPlayer url={m.mediaUrl} />
         {m.text && m.text.toLowerCase() !== 'video clip' ? <p>{m.text}</p> : null}
+      </div>
+    )
+  }
+  if (kind === 'location' && m.lat != null && m.lng != null) {
+    const field = `${import.meta.env.BASE_URL}field${customerId ? `?c=${customerId}` : ''}`
+    const nav = `https://www.google.com/maps/dir/?api=1&destination=${m.lat},${m.lng}`
+    return (
+      <div className="loc-card">
+        <strong>{m.text || 'Shared location'}</strong>
+        <p className="muted tiny">Pin on the field map for a technician.</p>
+        <p>
+          <a href={field}>Field map</a>
+          {' · '}
+          <a href={nav} target="_blank" rel="noreferrer">
+            Navigate
+          </a>
+        </p>
       </div>
     )
   }

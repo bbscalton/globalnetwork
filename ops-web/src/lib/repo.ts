@@ -47,6 +47,9 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     lastChatPreview: String(data.lastChatPreview ?? ''),
     lastChatAtMs: Number(data.lastChatAtMs ?? 0),
     lastChatKind: String(data.lastChatKind ?? ''),
+    lat: data.lat == null || data.lat === '' ? null : Number(data.lat),
+    lng: data.lng == null || data.lng === '' ? null : Number(data.lng),
+    locationLabel: String(data.locationLabel ?? ''),
   }
 }
 
@@ -109,6 +112,8 @@ export function observeChat(customerId: string, onData: (rows: ChatMessage[]) =>
           mediaUrl: data.mediaUrl == null ? null : String(data.mediaUrl),
           durationMs: Number(data.durationMs ?? 0),
           createdAtMs: Number(data.createdAtMs ?? 0),
+          lat: data.lat == null ? null : Number(data.lat),
+          lng: data.lng == null ? null : Number(data.lng),
         }
       }),
     )

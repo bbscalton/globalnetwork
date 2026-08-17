@@ -24,8 +24,13 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = account.daysLeft().clamp(0, 9999);
+    final village = account.locationLabel.trim().isNotEmpty && !RegExp(r'^-?\d+\.\d+').hasMatch(account.locationLabel)
+        ? account.locationLabel.trim()
+        : (RegExp(r'^-?\d{1,2}\.\d+\s*[ ,]\s*-?\d{1,3}\.\d+$').hasMatch(account.address.trim())
+            ? (account.locationLabel.trim().isEmpty ? 'Location pin saved' : account.locationLabel.trim())
+            : account.address.trim());
     final contact = [
-      if (account.address.trim().isNotEmpty) account.address.trim(),
+      if (village.isNotEmpty) village,
       if (account.phone.trim().isNotEmpty) account.phone.trim(),
       if (account.email.trim().isNotEmpty) account.email.trim(),
     ].join(' · ');

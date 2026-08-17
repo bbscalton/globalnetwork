@@ -15,6 +15,9 @@ class CustomerAccount {
     required this.rejectionReason,
     required this.idPhotoUrl,
     required this.billingPhotoUrl,
+    this.lat,
+    this.lng,
+    this.locationLabel = '',
   });
 
   final String id;
@@ -32,6 +35,9 @@ class CustomerAccount {
   final String rejectionReason;
   final String idPhotoUrl;
   final String billingPhotoUrl;
+  final double? lat;
+  final double? lng;
+  final String locationLabel;
 
   bool get needsRegistration => approvalStatus == 'none' || approvalStatus == 'rejected';
   bool get isPendingApproval => approvalStatus == 'pending';
@@ -116,16 +122,65 @@ class CustomerAccount {
       rejectionReason: (data['rejectionReason'] ?? '') as String,
       idPhotoUrl: (data['idPhotoUrl'] ?? '') as String,
       billingPhotoUrl: (data['billingPhotoUrl'] ?? '') as String,
+      lat: (data['lat'] as num?)?.toDouble(),
+      lng: (data['lng'] as num?)?.toDouble(),
+      locationLabel: (data['locationLabel'] ?? '') as String,
     );
   }
 }
 
 class ChatLine {
-  ChatLine({required this.id, required this.from, required this.text, required this.createdAtMs});
+  ChatLine({
+    required this.id,
+    required this.from,
+    required this.text,
+    required this.kind,
+    required this.createdAtMs,
+    this.mediaUrl,
+    this.durationMs = 0,
+    this.lat,
+    this.lng,
+  });
+
   final String id;
   final String from;
   final String text;
+  final String kind;
+  final String? mediaUrl;
+  final int durationMs;
   final int createdAtMs;
+  final double? lat;
+  final double? lng;
+
+  bool get mine => from == 'customer';
+  bool get isVoice => kind == 'voice';
+  bool get isVideo => kind == 'video';
+  bool get isLocation => kind == 'location' && lat != null && lng != null;
+
+  factory ChatLine.from(String id, Map<String, dynamic> data) {
+    final mediaUrl = (data['mediaUrl'] as String?)?.trim();
+    final rawKind = (data['kind'] as String?)?.trim() ?? '';
+    var kind = rawKind.isEmpty ? 'text' : rawKind;
+    if (kind == 'text' && mediaUrl != null && mediaUrl.isNotEmpty) {
+      final lower = mediaUrl.toLowerCase();
+      if (lower.contains('.mp4') || lower.contains('video')) {
+        kind = 'video';
+      } else if (lower.contains('.m4a') || lower.contains('audio') || lower.contains('voice')) {
+        kind = 'voice';
+      }
+    }
+    return ChatLine(
+      id: id,
+      from: (data['from'] ?? 'owner') as String,
+      text: (data['text'] ?? '') as String,
+      kind: kind,
+      mediaUrl: (mediaUrl == null || mediaUrl.isEmpty) ? null : mediaUrl,
+      durationMs: (data['durationMs'] as num?)?.toInt() ?? 0,
+      createdAtMs: (data['createdAtMs'] as num?)?.toInt() ?? 0,
+      lat: (data['lat'] as num?)?.toDouble(),
+      lng: (data['lng'] as num?)?.toDouble(),
+    );
+  }
 }
 
 class IssueTicket {

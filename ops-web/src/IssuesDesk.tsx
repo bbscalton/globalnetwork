@@ -20,7 +20,8 @@ export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
           <p className="eyebrow">Field</p>
           <h1>Line issues</h1>
           <p className="muted">
-            {open.length} still open · {ongoing.length} ongoing. Mark resolved only when the customer is back online.
+            {open.length} still open · {ongoing.length} ongoing. Pin colors on the{' '}
+            <Link to="/field">field map</Link> follow the same states.
           </p>
         </div>
       </header>

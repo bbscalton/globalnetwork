@@ -88,25 +88,45 @@ class GnApi {
         .orderBy('createdAtMs')
         .snapshots()
         .map(
-          (s) => s.docs
-              .map(
-                (d) => ChatLine(
-                  id: d.id,
-                  from: (d.data()['from'] ?? 'owner') as String,
-                  text: (d.data()['text'] ?? '') as String,
-                  createdAtMs: (d.data()['createdAtMs'] as num?)?.toInt() ?? 0,
-                ),
-              )
-              .toList(),
+          (s) => s.docs.map((d) => ChatLine.from(d.id, d.data())).toList(),
         );
   }
 
   Future<void> sendChat(String customerId, String text) {
+    return sendChatMessage(customerId: customerId, text: text, kind: 'text');
+  }
+
+  Future<void> sendChatMessage({
+    required String customerId,
+    required String text,
+    required String kind,
+    String? mediaUrl,
+    int durationMs = 0,
+    double? lat,
+    double? lng,
+  }) {
     return _db.collection('customers').doc(customerId).collection('chatMessages').add({
       'from': 'customer',
       'text': text,
+      'kind': kind,
+      if (mediaUrl != null && mediaUrl.isNotEmpty) 'mediaUrl': mediaUrl,
+      if (durationMs > 0) 'durationMs': durationMs,
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
       'createdAtMs': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  Future<String> uploadChatFile({
+    required String customerId,
+    required String fileName,
+    required Uint8List bytes,
+    required String contentType,
+  }) {
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final safe = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final key = 'orgs/globalnetwork/customers/$customerId/chat/$stamp-$safe';
+    return _putR2(key: key, bytes: bytes, contentType: contentType);
   }
 
   Future<String?> readFcmToken() async {
@@ -152,7 +172,7 @@ class GnApi {
     required Uint8List bytes,
     required String contentType,
   }) async {
-    const token = await user?.getIdToken(true);
+    final token = await user?.getIdToken(true);
     final sign = await http.post(
       Uri.parse('$r2BaseUrl/sign-upload'),
       headers: {
@@ -162,7 +182,7 @@ class GnApi {
       body: jsonEncode({'key': key, 'contentType': contentType}),
     );
     if (sign.statusCode >= 300) {
-      throw Exception('Could not prepare the photo upload (${sign.statusCode}).');
+      throw Exception('Could not prepare the upload (${sign.statusCode}).');
     }
     final payload = jsonDecode(sign.body) as Map<String, dynamic>;
     final putUrl = payload['putUrl'] as String;
@@ -174,7 +194,7 @@ class GnApi {
       },
       body: bytes,
     );
-    if (put.statusCode >= 300) throw Exception('Could not upload the photo (${put.statusCode}).');
+    if (put.statusCode >= 300) throw Exception('Could not upload the file (${put.statusCode}).');
     return '$r2BaseUrl/object?key=${Uri.encodeComponent(key)}';
   }
 
@@ -185,6 +205,9 @@ class GnApi {
     required String address,
     required String idPhotoUrl,
     required String billingPhotoUrl,
+    double? lat,
+    double? lng,
+    String? locationLabel,
   }) async {
     await _functions.httpsCallable('submitCustomerApplication').call(<String, dynamic>{
       'customerId': customerId,
@@ -193,6 +216,9 @@ class GnApi {
       'address': address,
       'idPhotoUrl': idPhotoUrl,
       'billingPhotoUrl': billingPhotoUrl,
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
+      if (locationLabel != null && locationLabel.isNotEmpty) 'locationLabel': locationLabel,
     });
   }
 

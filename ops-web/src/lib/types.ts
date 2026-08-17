@@ -28,6 +28,9 @@ export type Customer = {
   lastChatPreview?: string
   lastChatAtMs?: number
   lastChatKind?: string
+  lat?: number | null
+  lng?: number | null
+  locationLabel?: string
 }
 
 export type Plan = {
@@ -57,6 +60,8 @@ export type ChatMessage = {
   mediaUrl?: string | null
   durationMs?: number
   createdAtMs: number
+  lat?: number | null
+  lng?: number | null
 }
 
 export type DeskRole = 'owner' | 'pending' | 'rejected'

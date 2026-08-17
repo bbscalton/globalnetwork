@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/customer.dart';
+import '../services/place.dart';
 import '../theme.dart';
 
 class PendingApprovalScreen extends StatelessWidget {
@@ -35,7 +36,8 @@ class PendingApprovalScreen extends StatelessWidget {
             Text(
               [
                 if (account.phone.isNotEmpty) account.phone,
-                if (account.address.isNotEmpty) account.address,
+                if (account.locationLabel.isNotEmpty) account.locationLabel
+                else if (account.address.isNotEmpty && !looksLikeCoordinates(account.address)) account.address,
                 if (account.email.isNotEmpty) account.email,
               ].join('\n'),
               style: const TextStyle(color: Colors.white70, height: 1.4),

@@ -2,6 +2,8 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireOwner, sendToOwners, sendToToken, writeAudit } from "./context";
 
+const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
+
 export const ensureOrgDefaults = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const orgId = String(request.data?.orgId ?? DEFAULT_ORG_ID);
@@ -284,11 +286,18 @@ export const submitCustomerApplication = onCall(CALLABLE, async (request) => {
     const customerId = String(request.data?.customerId ?? "").trim();
     const name = String(request.data?.name ?? "").trim();
     const phone = String(request.data?.phone ?? "").trim();
-    const address = String(request.data?.address ?? "").trim();
     const idPhotoUrl = String(request.data?.idPhotoUrl ?? "").trim();
     const billingPhotoUrl = String(request.data?.billingPhotoUrl ?? "").trim();
+    const addressRaw = String(request.data?.address ?? "").trim();
+    const locationLabel = String(request.data?.locationLabel ?? "").trim();
+    const lat = Number(request.data?.lat);
+    const lng = Number(request.data?.lng);
+    const coordHit = COORD.exec(addressRaw);
+    const pinLat = Number.isFinite(lat) ? lat : coordHit ? Number(coordHit[1]) : null;
+    const pinLng = Number.isFinite(lng) ? lng : coordHit ? Number(coordHit[2]) : null;
+    const address = coordHit ? locationLabel || "Shared pin in Antigua" : addressRaw;
     if (!customerId || !name || !phone || !address || !idPhotoUrl || !billingPhotoUrl) {
-      throw new HttpsError("invalid-argument", "Name, phone, address, ID photo, and billing-address photo are required.");
+      throw new HttpsError("invalid-argument", "Name, phone, village / area, ID photo, and billing-address photo are required.");
     }
     const ref = db.collection("customers").doc(customerId);
     const snap = await ref.get();
@@ -308,6 +317,7 @@ export const submitCustomerApplication = onCall(CALLABLE, async (request) => {
       kycSubmittedAtMs: Date.now(),
       rejectionReason: "",
       lastSeenMs: Date.now(),
+      ...(pinLat != null && pinLng != null ? { lat: pinLat, lng: pinLng, locationLabel: locationLabel || address } : {}),
     });
     await sendToOwners("New GlobalNetwork application", `${name} submitted ID and billing photos for approval.`, {
       type: "application",
