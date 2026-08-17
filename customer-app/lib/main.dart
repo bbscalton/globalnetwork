@@ -135,13 +135,22 @@ class _GateState extends State<Gate> {
         }
       });
     } on FirebaseFunctionsException catch (e) {
+      final raw = (e.message ?? e.code).trim();
+      final looksInternal = e.code == 'internal' || raw.toLowerCase() == 'internal';
       setState(() {
         linkError = e.code == 'not-found'
             ? 'No customer record for this email yet. Ask the owner to create your account on the GlobalNetwork desk.'
-            : (e.message ?? e.code);
+            : looksInternal || e.code == 'unavailable'
+                ? 'Could not open your account. Check your internet and try again.'
+                : (e.message ?? e.code);
       });
     } catch (e) {
-      setState(() => linkError = e.toString());
+      final raw = e.toString();
+      setState(() {
+        linkError = raw.toLowerCase().contains('internal')
+            ? 'Could not open your account. Check your internet and try again.'
+            : raw.replaceFirst('Exception: ', '');
+      });
     } finally {
       if (mounted) setState(() => linking = false);
     }
@@ -153,7 +162,18 @@ class _GateState extends State<Gate> {
       return LoginScreen(api: api, onReady: () => setState(() {}));
     }
     if (linking && account == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Opening your account…'),
+            ],
+          ),
+        ),
+      );
     }
     if (account == null) {
       return Scaffold(
@@ -165,11 +185,22 @@ class _GateState extends State<Gate> {
             children: [
               const Icon(Icons.public, size: 64, color: GnTheme.cyan),
               const SizedBox(height: 16),
+              const Text(
+                'Your GlobalNetwork account',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
               Text(
-                linkError ?? 'Ask the owner to create your account.',
+                linkError ?? 'Could not open your account yet.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
+              FilledButton(
+                onPressed: linking ? null : _bindCustomer,
+                child: Text(linking ? 'Opening…' : 'Try again'),
+              ),
+              const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () async {
                   await api.signOut();

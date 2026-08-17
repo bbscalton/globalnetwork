@@ -58,6 +58,11 @@ class GnApi {
   }
 
   Future<String> linkAccount() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      await user.reload();
+      await user.getIdToken(true);
+    }
     final callable = _functions.httpsCallable('linkCustomerAccount');
     final res = await callable.call(<String, dynamic>{});
     final data = Map<String, dynamic>.from(res.data as Map);

@@ -1,7 +1,8 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, db, requireOwner, sendToToken, writeAudit } from "./context";
+import { logger } from "firebase-functions";
+import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, db, requireOwner, sendToToken, writeAudit } from "./context";
 
-export const ensureOrgDefaults = onCall(async (request) => {
+export const ensureOrgDefaults = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const orgId = String(request.data?.orgId ?? DEFAULT_ORG_ID);
   const orgRef = db.collection("orgs").doc(orgId);
@@ -35,7 +36,7 @@ export const ensureOrgDefaults = onCall(async (request) => {
   return { ok: true, orgId };
 });
 
-export const registerOwnerDevice = onCall(async (request) => {
+export const registerOwnerDevice = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const token = String(request.data?.fcmToken ?? "").trim();
   const orgId = String(request.data?.orgId ?? DEFAULT_ORG_ID);
@@ -51,7 +52,7 @@ export const registerOwnerDevice = onCall(async (request) => {
   return { ok: true };
 });
 
-export const savePlan = onCall(async (request) => {
+export const savePlan = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const name = String(request.data?.name ?? "").trim();
   const days = Number(request.data?.days ?? 0);
@@ -80,7 +81,7 @@ export const savePlan = onCall(async (request) => {
   return { ok: true, id };
 });
 
-export const createCustomer = onCall(async (request) => {
+export const createCustomer = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const name = String(request.data?.name ?? "").trim();
   if (!name) throw new HttpsError("invalid-argument", "Name is required.");
@@ -122,7 +123,7 @@ export const createCustomer = onCall(async (request) => {
   return { customerId: ref.id };
 });
 
-export const extendSubscription = onCall(async (request) => {
+export const extendSubscription = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const customerId = String(request.data?.customerId ?? "");
   const days = Math.floor(Number(request.data?.days ?? 0));
@@ -189,7 +190,7 @@ export const extendSubscription = onCall(async (request) => {
   return result;
 });
 
-export const suspendCustomer = onCall(async (request) => {
+export const suspendCustomer = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const customerId = String(request.data?.customerId ?? "");
   if (!customerId) throw new HttpsError("invalid-argument", "customerId required.");
@@ -198,17 +199,51 @@ export const suspendCustomer = onCall(async (request) => {
   return { ok: true };
 });
 
-export const linkCustomerAccount = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  const email = ((request.auth?.token?.email as string | undefined) ?? "").trim().toLowerCase();
-  if (!uid || !email) throw new HttpsError("unauthenticated", "Sign in required.");
-  const matches = await db.collection("customers").where("email", "==", email).limit(1).get();
-  if (matches.empty) throw new HttpsError("not-found", "No customer record for this email.");
-  await matches.docs[0].ref.update({ uid, lastSeenMs: Date.now() });
-  return { customerId: matches.docs[0].id };
+export const linkCustomerAccount = onCall(CALLABLE, async (request) => {
+  try {
+    const uid = request.auth?.uid;
+    const claims = request.auth?.token as Record<string, unknown> | undefined;
+    const email = String(claims?.email ?? "").trim().toLowerCase();
+    if (!uid || !email) {
+      throw new HttpsError("unauthenticated", "Sign in with a Google or email account that has an email address.");
+    }
+    const matches = await db.collection("customers").where("email", "==", email).limit(1).get();
+    if (!matches.empty) {
+      await matches.docs[0].ref.update({ uid, lastSeenMs: Date.now() });
+      return { customerId: matches.docs[0].id };
+    }
+    const displayName = String(claims?.name ?? "").trim() || email.split("@")[0];
+    const ref = db.collection("customers").doc();
+    await ref.set({
+      orgId: DEFAULT_ORG_ID,
+      name: displayName,
+      phone: "",
+      email,
+      address: "",
+      status: "expired",
+      planId: "",
+      planName: "",
+      planDays: 0,
+      feeAmount: 0,
+      paidAmount: 0,
+      balanceDue: 0,
+      paidUntilMs: null,
+      graceUntilMs: null,
+      lastSeenMs: Date.now(),
+      unreadStaff: 0,
+      createdAtMs: Date.now(),
+      createdBy: uid,
+      uid,
+    });
+    return { customerId: ref.id };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    logger.error("linkCustomerAccount failed", error);
+    throw new HttpsError("unavailable", "Could not open your GlobalNetwork account. Try again.");
+  }
 });
 
-export const heartbeat = onCall(async (request) => {
+export const heartbeat = onCall(CALLABLE, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
   const customerId = String(request.data?.customerId ?? uid);

@@ -2,6 +2,12 @@ import * as admin from "firebase-admin";
 import { logger } from "firebase-functions";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 
+export const CALLABLE = {
+  region: "us-central1" as const,
+  cors: true,
+  invoker: "public" as const,
+};
+
 export const ADMIN_EMAIL = "neuereatec@gmail.com";
 export const DEFAULT_ORG_ID = "globalnetwork";
 export const CURRENCY = "XCD";

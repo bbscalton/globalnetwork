@@ -10,7 +10,7 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onIssue;
   final VoidCallback onSignOut;
 
-  Color get _statusColor {
+  Color get _tone {
     switch (account.status) {
       case 'active':
         return const Color(0xFF34D399);
@@ -24,68 +24,107 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = account.daysLeft().clamp(0, 9999);
+    final contact = [
+      if (account.address.trim().isNotEmpty) account.address.trim(),
+      if (account.phone.trim().isNotEmpty) account.phone.trim(),
+      if (account.email.trim().isNotEmpty) account.email.trim(),
+    ].join(' · ');
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
             Image.asset('assets/logo-gn.png', width: 32, height: 32, errorBuilder: (_, __, ___) => const Icon(Icons.public)),
             const SizedBox(width: 10),
-            const Text('GlobalNetwork'),
+            const Text('My account'),
           ],
         ),
-        actions: [IconButton(onPressed: onSignOut, icon: const Icon(Icons.logout))],
+        actions: [
+          TextButton(onPressed: onSignOut, child: const Text('Sign out')),
+        ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         children: [
+          Text(
+            account.name.trim().isEmpty ? 'Hello' : 'Hello, ${account.name.trim()}',
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            contact.isEmpty ? 'GlobalNetwork · Antigua · billed in EC dollars' : contact,
+            style: const TextStyle(color: Colors.white70, height: 1.4),
+          ),
+          const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF0B1F4A), Color(0xFF164E63)]),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: GnTheme.cyan.withValues(alpha: 0.4)),
-              boxShadow: [BoxShadow(color: GnTheme.cyan.withValues(alpha: 0.18), blurRadius: 24, offset: const Offset(0, 10))],
+              border: Border.all(color: _tone.withValues(alpha: 0.45)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(account.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                Text(account.planName.isEmpty ? 'No package yet' : account.planName),
-                const SizedBox(height: 12),
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: days.toDouble()),
-                  duration: const Duration(milliseconds: 900),
-                  builder: (context, value, _) => Text(
-                    '${value.round()}',
-                    style: const TextStyle(fontSize: 56, fontWeight: FontWeight.w800, color: GnTheme.cyan),
-                  ),
-                ),
-                const Text('days remaining'),
-                const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _statusColor.withValues(alpha: 0.18),
+                    color: _tone.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    account.status.toUpperCase(),
-                    style: TextStyle(color: _statusColor, fontWeight: FontWeight.w700, fontSize: 12),
+                    account.serviceHeadline,
+                    style: TextStyle(color: _tone, fontWeight: FontWeight.w800),
                   ),
                 ),
+                const SizedBox(height: 16),
+                Text(
+                  '$days',
+                  style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w800, color: GnTheme.cyan, height: 0.95),
+                ),
+                const Text('days of internet remaining', style: TextStyle(fontSize: 16)),
                 const SizedBox(height: 8),
-                Text('Balance due EC\$${account.balanceDue.toStringAsFixed(0)}'),
+                Text(account.validUntilLabel, style: const TextStyle(color: Colors.white70)),
+                const SizedBox(height: 16),
+                Text(
+                  account.planName.trim().isEmpty
+                      ? 'No package assigned yet'
+                      : '${account.planName}${account.planDays > 0 ? ' · ${account.planDays} days' : ''}${account.feeAmount > 0 ? ' · ${CustomerAccount.ec(account.feeAmount)}' : ''}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  account.balanceDue > 0
+                      ? 'Amount due ${CustomerAccount.ec(account.balanceDue)}'
+                      : 'Nothing owed right now',
+                  style: TextStyle(
+                    color: account.balanceDue > 0 ? const Color(0xFFFBBF24) : Colors.white70,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
-          const Text(
-            'If you cannot pay the full fee, ask the owner to extend a certain number of days. They will record the partial payment from the owner desk.',
+          const SizedBox(height: 16),
+          Text(account.serviceDetail, style: const TextStyle(height: 1.45, fontSize: 15)),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: onChat,
+            icon: const Icon(Icons.chat_bubble),
+            style: FilledButton.styleFrom(
+              backgroundColor: GnTheme.cyan,
+              foregroundColor: GnTheme.navy,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            label: const Text('Chat with GlobalNetwork'),
           ),
-          const SizedBox(height: 20),
-          FilledButton.icon(onPressed: onChat, icon: const Icon(Icons.chat_bubble), label: const Text('Chat with GlobalNetwork')),
           const SizedBox(height: 10),
-          OutlinedButton.icon(onPressed: onIssue, icon: const Icon(Icons.report_problem), label: const Text('Report an issue with photo')),
+          OutlinedButton.icon(
+            onPressed: onIssue,
+            icon: const Icon(Icons.report_problem_outlined),
+            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+            label: const Text('Report a line problem'),
+          ),
         ],
       ),
     );
