@@ -1,4 +1,7 @@
 const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
+const APK =
+  (import.meta.env.VITE_ANDROID_APK_URL as string | undefined) ||
+  'https://globalnetwork-media.neuereatec.workers.dev/app/android.apk'
 
 export default function App() {
   return (
@@ -14,6 +17,9 @@ export default function App() {
           <a href="#plans">Plans</a>
         </nav>
         <div className="nav-ctas">
+          <a className="btn btn-ghost" href={APK}>
+            Download Android app
+          </a>
           <a className="btn btn-primary" href={OPS}>
             Owner desk
           </a>
@@ -31,7 +37,10 @@ export default function App() {
             full fee isn’t ready, chat from the field, and file line issues with photos.
           </p>
           <div className="hero-ctas">
-            <a className="btn btn-primary btn-lg" href={OPS}>
+            <a className="btn btn-primary btn-lg" href={APK}>
+              Download Android app
+            </a>
+            <a className="btn btn-ghost-on-dark btn-lg" href={OPS}>
               Open owner desk
             </a>
           </div>
@@ -49,7 +58,7 @@ export default function App() {
           {[
             ['1 · Apps', 'Owner web desk plus Flutter iOS & Android customer app.'],
             ['2 · Firebase', 'Auth, Firestore customers, Cloud Functions for extend-days, FCM alerts.'],
-            ['3 · Cloudflare', 'Worker + R2 for issue photos, D1 usage, KV cache at the edge.'],
+            ['3 · Cloudflare', 'Worker + R2 for issue photos, the Android APK download, D1 usage, and KV cache.'],
             ['4 · Hosting', 'GitHub Pages marketing site and owner desk; Firebase Hosting as an optional mirror.'],
           ].map(([title, body]) => (
             <article key={title} className="glass-card">
@@ -101,7 +110,7 @@ export default function App() {
       </section>
 
       <footer className="site-footer">
-        GlobalNetwork · Antigua · EC dollars · Owner desk on GitHub Pages
+        GlobalNetwork · Antigua · EC dollars · Download the Android app from Cloudflare R2
       </footer>
     </div>
   )

@@ -145,11 +145,35 @@ function allowedKey(key: string): boolean {
   return /^orgs\/[^/]+\/customers\/[^/]+\/(issues|chat)\/.+/.test(key);
 }
 
+const APP_APK_KEY = "orgs/globalnetwork/app/globalnetwork-customer.apk";
+
+function apkHeaders(size: number): Headers {
+  const headers = new Headers();
+  headers.set("access-control-allow-origin", "*");
+  headers.set("content-type", "application/vnd.android.package-archive");
+  headers.set("content-disposition", 'attachment; filename="GlobalNetwork.apk"');
+  headers.set("cache-control", "public, max-age=300");
+  headers.set("accept-ranges", "bytes");
+  headers.set("content-length", String(size));
+  return headers;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") return cors({ ok: true });
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
+
+    if (path === "/app/android.apk" || path === "/app/globalnetwork.apk") {
+      if (request.method === "HEAD") {
+        const meta = await env.MEDIA_BUCKET.head(APP_APK_KEY);
+        if (!meta) return cors({ error: "Android app is not published yet." }, 404);
+        return new Response(null, { headers: apkHeaders(meta.size) });
+      }
+      const obj = await env.MEDIA_BUCKET.get(APP_APK_KEY);
+      if (!obj) return cors({ error: "Android app is not published yet." }, 404);
+      return new Response(obj.body, { headers: apkHeaders(obj.size) });
+    }
 
     if (path === "/health") {
       const r2 = await probeR2(env);
