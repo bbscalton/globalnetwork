@@ -9,6 +9,7 @@ import type { Customer, IssueTicket, Plan } from './lib/types'
 import { Board } from './Board'
 import { CustomerPage } from './CustomerPage'
 import { ChatDesk } from './ChatDesk'
+import { CallOverlay } from './CallOverlay'
 import { FieldMap } from './FieldMap'
 import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
@@ -197,7 +198,11 @@ function Shell({
         </NavLink>
         <NavLink to="/chat">
           Inbox
-          {pulse.unread.length > 0 && <span className="nav-count hot gn-pulse">{pulse.unread.length}</span>}
+          {(pulse.ringing > 0 || pulse.unread.length > 0) && (
+            <span className={`nav-count hot ${pulse.ringing ? 'gn-pulse' : ''}`}>
+              {pulse.ringing > 0 ? pulse.ringing : pulse.unread.length}
+            </span>
+          )}
         </NavLink>
         <NavLink to="/issues">
           Issues
@@ -227,6 +232,7 @@ function Shell({
         </button>
       </aside>
       <main className="main">
+        <CallOverlay customers={customers} />
         {error && <p className="fail">{error}</p>}
         <Routes>
           <Route path="/" element={<Board customers={customers} plans={plans} issues={issues} now={now} />} />

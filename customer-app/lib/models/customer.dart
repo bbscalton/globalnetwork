@@ -153,9 +153,10 @@ class ChatLine {
   final double? lng;
 
   bool get mine => from == 'customer';
-  bool get isVoice => kind == 'voice';
+  bool get isVoice => kind == 'voice' || (kind == 'call' && mediaUrl != null && mediaUrl!.isNotEmpty);
   bool get isVideo => kind == 'video';
   bool get isLocation => kind == 'location' && lat != null && lng != null;
+  bool get isCall => kind == 'call';
 
   factory ChatLine.from(String id, Map<String, dynamic> data) {
     final mediaUrl = (data['mediaUrl'] as String?)?.trim();
@@ -163,7 +164,9 @@ class ChatLine {
     var kind = rawKind.isEmpty ? 'text' : rawKind;
     if (kind == 'text' && mediaUrl != null && mediaUrl.isNotEmpty) {
       final lower = mediaUrl.toLowerCase();
-      if (lower.contains('.mp4') || lower.contains('video')) {
+      if (lower.contains('/calls/') || lower.contains('.webm')) {
+        kind = 'call';
+      } else if (lower.contains('.mp4') || lower.contains('video')) {
         kind = 'video';
       } else if (lower.contains('.m4a') || lower.contains('audio') || lower.contains('voice')) {
         kind = 'voice';

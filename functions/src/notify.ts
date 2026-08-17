@@ -1,4 +1,4 @@
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
 import { db, sendToOwners, sendToToken } from "./context";
@@ -12,9 +12,10 @@ function fromOwner(from: string): boolean {
 
 function chatKind(data: { kind?: unknown; mediaUrl?: unknown; lat?: unknown }): string {
   const kind = String(data.kind ?? "text");
-  if (kind === "voice" || kind === "video" || kind === "text" || kind === "location") return kind;
+  if (kind === "voice" || kind === "video" || kind === "text" || kind === "location" || kind === "call") return kind;
   if (data.lat != null) return "location";
   const url = String(data.mediaUrl ?? "").toLowerCase();
+  if (url.includes("/calls/") || url.includes(".webm")) return "call";
   if (url.includes("video") || url.includes(".mp4")) return "video";
   if (url.includes("voice") || url.includes(".m4a") || url.includes("audio")) return "voice";
   return "text";
@@ -24,6 +25,7 @@ function previewFor(kind: string, text: string): string {
   if (kind === "voice") return "Voice note";
   if (kind === "video") return "Video clip";
   if (kind === "location") return "Shared location";
+  if (kind === "call") return text.toLowerCase().includes("recording") ? "Call recording" : "Voice call";
   return text.slice(0, 80) || "Chat message";
 }
 
@@ -76,13 +78,17 @@ async function ensureChatIssue(customerId: string, name: string, kind: string, t
         ? "Video report from chat"
         : kind === "location"
           ? "Location shared for a technician"
-          : "Reported in chat";
+          : kind === "call"
+            ? "Voice call to the desk"
+            : "Reported in chat";
   const body =
     kind === "text"
       ? text.slice(0, 400)
       : kind === "location"
         ? `Customer shared a map pin${text ? `: ${text.slice(0, 240)}` : "."}`
-        : `${kind === "video" ? "Customer sent a video clip" : "Customer sent a voice note"}${text && !/^(voice note|video clip)$/i.test(text) ? `: ${text.slice(0, 240)}` : "."}`;
+        : kind === "call"
+          ? "Customer called the desk on in-app VoIP."
+          : `${kind === "video" ? "Customer sent a video clip" : "Customer sent a voice note"}${text && !/^(voice note|video clip)$/i.test(text) ? `: ${text.slice(0, 240)}` : "."}`;
   const ref = await customerRef.collection("issues").add({
     title,
     body,
@@ -179,10 +185,14 @@ export const onChatCreated = onDocumentCreated(
     await customerRef.update({
       unreadStaff: (Number(customer.get("unreadStaff") ?? 0) || 0) + 1,
     });
-    await sendToOwners(String(customer.get("name") ?? "Customer"), preview, {
-      type: "chat",
-      customerId,
-    });
+    if (kind !== "call") {
+      await sendToOwners(String(customer.get("name") ?? "Customer"), preview, {
+        type: "chat",
+        customerId,
+      });
+    }
+
+    if (kind === "call") return;
 
     const agentLive = customer.get("chatAgentLive") === true;
     const lastBot = Number(customer.get("lastBotReplyMs") ?? 0);
@@ -252,4 +262,58 @@ export const onIssueCreated = onDocumentCreated("customers/{customerId}/issues/{
     type: "issue",
     customerId,
   });
+});
+
+export const onVoiceCallWritten = onDocumentWritten("customers/{customerId}/calls/{callId}", async (event) => {
+  const after = event.data?.after.data();
+  const before = event.data?.before.data();
+  const customerId = event.params.customerId;
+  const callId = event.params.callId;
+  const customerRef = db.collection("customers").doc(customerId);
+
+  if (!after) {
+    await customerRef.update({ callStatus: "idle", liveCallId: "", callRecording: false });
+    return;
+  }
+
+  const status = String(after.status ?? "");
+  const live = status === "ringing" || status === "in_call";
+  await customerRef.update({
+    callStatus: status,
+    liveCallId: live ? callId : "",
+    callRecording: after.recording === true && status === "in_call",
+  });
+
+  const justRinging = !before && status === "ringing";
+  if (justRinging) {
+    const customer = await customerRef.get();
+    const name = String(customer.get("name") ?? "Customer");
+    await sendToOwners("Incoming voice call", `${name} is calling the desk`, {
+      type: "call",
+      customerId,
+      callId,
+    });
+    await customerRef.collection("chatMessages").add({
+      from: "customer",
+      text: "Voice call to the desk",
+      kind: "call",
+      callId,
+      createdAtMs: Date.now(),
+    });
+    await ensureChatIssue(customerId, name, "call", "Customer called the desk to report an issue.");
+  }
+
+  const newRecordingUrl = typeof after.recordingUrl === "string" ? after.recordingUrl : "";
+  const oldRecordingUrl = before && typeof before.recordingUrl === "string" ? before.recordingUrl : "";
+  if (newRecordingUrl && newRecordingUrl !== oldRecordingUrl) {
+    await customerRef.collection("chatMessages").add({
+      from: "owner",
+      text: "Call recording",
+      kind: "call",
+      mediaUrl: newRecordingUrl,
+      durationMs: Number(after.durationMs ?? 0),
+      callId,
+      createdAtMs: Date.now(),
+    });
+  }
 });

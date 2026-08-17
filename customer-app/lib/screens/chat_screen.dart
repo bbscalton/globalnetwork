@@ -14,6 +14,7 @@ import '../services/api.dart';
 import '../services/place.dart';
 import '../theme.dart';
 import 'chat_bubbles.dart';
+import 'call_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key, required this.api, required this.customerId});
@@ -319,6 +320,17 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Call the desk',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => CallScreen(api: widget.api, customerId: widget.customerId)),
+              );
+            },
+            icon: const Icon(Icons.phone_in_talk, color: GnTheme.cyan),
+          ),
+        ],
       ),
       body: DecoratedBox(
         decoration: const BoxDecoration(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api.dart';
 import '../theme.dart';
+import 'call_screen.dart';
 
 class IssueScreen extends StatefulWidget {
   const IssueScreen({super.key, required this.api, required this.customerId});
@@ -69,6 +70,20 @@ class _IssueScreenState extends State<IssueScreen> {
               onPressed: busy ? null : _send,
               style: FilledButton.styleFrom(backgroundColor: GnTheme.cyan, foregroundColor: GnTheme.navy),
               child: Text(busy ? 'Uploading…' : 'Take photo & submit'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: busy
+                  ? null
+                  : () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CallScreen(api: widget.api, customerId: widget.customerId),
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.phone_in_talk),
+              label: const Text('Or call the desk'),
             ),
             if (status != null) Text(status!, style: const TextStyle(color: Colors.redAccent)),
           ],

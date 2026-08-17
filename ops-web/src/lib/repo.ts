@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -10,9 +11,9 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
-import { COL, db, functions } from './firebase'
-import { ORG_ID } from './admin'
-import type { ChatMessage, Customer, CustomerStatus, DeskInvite, DeskMember, DeskRole, IssueTicket, Payment, Plan } from './types'
+import { COL, auth, db, functions } from './firebase'
+import { ORG_ID, R2_BASE } from './admin'
+import type { ChatMessage, Customer, CustomerStatus, DeskInvite, DeskMember, DeskRole, IssueTicket, Payment, Plan, VoiceCall } from './types'
 
 function requireDb() {
   if (!db) throw new Error('Firestore is not configured.')
@@ -50,6 +51,9 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     lat: data.lat == null || data.lat === '' ? null : Number(data.lat),
     lng: data.lng == null || data.lng === '' ? null : Number(data.lng),
     locationLabel: String(data.locationLabel ?? ''),
+    callStatus: String(data.callStatus ?? 'idle'),
+    liveCallId: String(data.liveCallId ?? ''),
+    callRecording: data.callRecording === true,
   }
 }
 
@@ -353,4 +357,163 @@ export function formatEc(amount: number): string {
 export function daysLeft(paidUntilMs: number | null, now: number): number {
   if (!paidUntilMs) return 0
   return Math.ceil((paidUntilMs - now) / (24 * 60 * 60 * 1000))
+}
+
+export type IceServer = { urls: string | string[]; username?: string; credential?: string }
+
+export async function fetchIceServers(): Promise<IceServer[]> {
+  const stun: IceServer[] = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }]
+  try {
+    const token = await auth?.currentUser?.getIdToken()
+    if (!token) return stun
+    const res = await fetch(`${R2_BASE}/ice-servers`, { headers: { authorization: `Bearer ${token}` } })
+    if (!res.ok) return stun
+    const json = (await res.json()) as { iceServers?: IceServer[] }
+    return json.iceServers?.length ? json.iceServers : stun
+  } catch {
+    return stun
+  }
+}
+
+function asCall(id: string, data: Record<string, unknown>, customerId?: string): VoiceCall {
+  return {
+    id,
+    customerId,
+    from: String(data.from ?? 'customer') === 'owner' ? 'owner' : 'customer',
+    status: String(data.status ?? 'ended'),
+    offerSdp: String(data.offerSdp ?? ''),
+    answerSdp: String(data.answerSdp ?? ''),
+    recording: data.recording === true,
+    recordingUrl: data.recordingUrl == null || data.recordingUrl === '' ? null : String(data.recordingUrl),
+    durationMs: Number(data.durationMs ?? 0),
+    startedAtMs: Number(data.startedAtMs ?? 0),
+    answeredAtMs: data.answeredAtMs == null ? undefined : Number(data.answeredAtMs),
+    endedAtMs: data.endedAtMs == null ? undefined : Number(data.endedAtMs),
+    endedBy: data.endedBy == null ? undefined : String(data.endedBy),
+  }
+}
+
+export function observeCalls(customerId: string, onData: (rows: VoiceCall[]) => void): Unsubscribe {
+  const database = requireDb()
+  const q = query(collection(database, COL.customers, customerId, COL.calls), orderBy('startedAtMs', 'desc'))
+  return onSnapshot(q, (snap) => {
+    onData(snap.docs.map((d) => asCall(d.id, d.data() as Record<string, unknown>, customerId)))
+  })
+}
+
+export function observeCall(customerId: string, callId: string, onData: (row: VoiceCall | null) => void): Unsubscribe {
+  const database = requireDb()
+  return onSnapshot(doc(database, COL.customers, customerId, COL.calls, callId), (snap) => {
+    onData(snap.exists() ? asCall(snap.id, snap.data() as Record<string, unknown>, customerId) : null)
+  })
+}
+
+export type IceCandidateDoc = {
+  id: string
+  candidate: string
+  sdpMid?: string | null
+  sdpMLineIndex?: number | null
+}
+
+export function observeIce(
+  customerId: string,
+  callId: string,
+  side: 'iceOffer' | 'iceAnswer',
+  onAdded: (row: IceCandidateDoc) => void,
+): Unsubscribe {
+  const database = requireDb()
+  const colName = side === 'iceOffer' ? COL.iceOffer : COL.iceAnswer
+  return onSnapshot(collection(database, COL.customers, customerId, COL.calls, callId, colName), (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type !== 'added') return
+      const data = change.doc.data() as Record<string, unknown>
+      onAdded({
+        id: change.doc.id,
+        candidate: String(data.candidate ?? ''),
+        sdpMid: data.sdpMid == null ? null : String(data.sdpMid),
+        sdpMLineIndex: data.sdpMLineIndex == null ? null : Number(data.sdpMLineIndex),
+      })
+    })
+  })
+}
+
+export async function addIceCandidate(
+  customerId: string,
+  callId: string,
+  side: 'iceOffer' | 'iceAnswer',
+  ice: { candidate: string; sdpMid?: string | null; sdpMLineIndex?: number | null },
+): Promise<void> {
+  const colName = side === 'iceOffer' ? COL.iceOffer : COL.iceAnswer
+  await addDoc(collection(requireDb(), COL.customers, customerId, COL.calls, callId, colName), {
+    candidate: ice.candidate,
+    createdAtMs: Date.now(),
+    ...(ice.sdpMid != null && ice.sdpMid !== '' ? { sdpMid: ice.sdpMid } : {}),
+    ...(ice.sdpMLineIndex != null && Number.isFinite(ice.sdpMLineIndex) ? { sdpMLineIndex: ice.sdpMLineIndex } : {}),
+  })
+}
+
+export async function answerCall(customerId: string, callId: string, answerSdp: string): Promise<void> {
+  const database = requireDb()
+  await updateDoc(doc(database, COL.customers, customerId, COL.calls, callId), {
+    status: 'in_call',
+    answerSdp,
+    answeredAtMs: Date.now(),
+  })
+  await updateDoc(doc(database, COL.customers, customerId), { chatAgentLive: true })
+}
+
+export async function hangupCall(
+  customerId: string,
+  callId: string,
+  by: 'owner' | 'customer',
+  status: 'ended' | 'missed' = 'ended',
+): Promise<void> {
+  await updateDoc(doc(requireDb(), COL.customers, customerId, COL.calls, callId), {
+    status,
+    endedAtMs: Date.now(),
+    endedBy: by,
+    recording: false,
+  })
+}
+
+export async function setCallRecording(customerId: string, callId: string, recording: boolean): Promise<void> {
+  await updateDoc(doc(requireDb(), COL.customers, customerId, COL.calls, callId), { recording })
+}
+
+export async function saveCallRecording(
+  customerId: string,
+  callId: string,
+  blob: Blob,
+  durationMs: number,
+): Promise<string> {
+  const token = await auth?.currentUser?.getIdToken(true)
+  if (!token) throw new Error('Sign in required to save a recording.')
+  const key = `orgs/${ORG_ID}/customers/${customerId}/calls/${callId}/recording.webm`
+  const contentType = blob.type || 'audio/webm'
+  const sign = await fetch(`${R2_BASE}/sign-upload`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ key, contentType }),
+  })
+  if (!sign.ok) throw new Error(`Could not prepare the recording upload (${sign.status}).`)
+  const payload = (await sign.json()) as { putUrl?: string }
+  if (!payload.putUrl) throw new Error('Upload URL missing.')
+  const put = await fetch(payload.putUrl, {
+    method: 'PUT',
+    headers: { 'content-type': contentType, authorization: `Bearer ${token}` },
+    body: blob,
+  })
+  if (!put.ok) throw new Error(`Could not upload the recording (${put.status}).`)
+  const recordingUrl = `${R2_BASE}/object?key=${encodeURIComponent(key)}`
+  await updateDoc(doc(requireDb(), COL.customers, customerId, COL.calls, callId), {
+    recordingUrl,
+    durationMs,
+    recording: false,
+  })
+  return recordingUrl
+}
+
+export async function getCall(customerId: string, callId: string): Promise<VoiceCall | null> {
+  const snap = await getDoc(doc(requireDb(), COL.customers, customerId, COL.calls, callId))
+  return snap.exists() ? asCall(snap.id, snap.data() as Record<string, unknown>, customerId) : null
 }

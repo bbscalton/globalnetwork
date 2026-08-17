@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import type { ChatMessage, Customer, IssueTicket } from './lib/types'
+import type { ChatMessage, Customer, IssueTicket, VoiceCall } from './lib/types'
 import * as repo from './lib/repo'
 import { ChatBubbleBody, kindOf } from './ChatMedia'
 import { fmtWhen, initials, statusTone } from './lib/desk'
@@ -16,6 +16,9 @@ function previewOf(c: Customer): string {
   if (c.lastChatKind === 'voice') return 'Voice note'
   if (c.lastChatKind === 'video') return 'Video clip'
   if (c.lastChatKind === 'location') return 'Shared location'
+  if (c.lastChatKind === 'call') return 'Voice call'
+  if (c.callStatus === 'ringing') return 'Incoming voice call'
+  if (c.callStatus === 'in_call') return 'Live voice call'
   if (c.lastChatPreview) return c.lastChatPreview
   if ((c.unreadStaff ?? 0) > 0) return 'New message'
   return c.planName || 'No plan'
@@ -34,6 +37,7 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
   )
   const [selected, setSelected] = useState(params.get('c') || ranked[0]?.id || '')
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [calls, setCalls] = useState<VoiceCall[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const threadRef = useRef<HTMLDivElement | null>(null)
@@ -49,9 +53,9 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
 
   useEffect(() => {
     if (!selected) return
-    const unsub = repo.observeChat(selected, setMessages)
+    const unsubs = [repo.observeChat(selected, setMessages), repo.observeCalls(selected, setCalls)]
     void repo.markChatRead(selected).catch(() => undefined)
-    return unsub
+    return () => unsubs.forEach((unsub) => unsub())
   }, [selected])
 
   useEffect(() => {
@@ -68,7 +72,30 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
   const current = customers.find((c) => c.id === selected)
   const theirs = issues.filter((i) => i.customerId === selected)
   const openIssue = theirs.find((i) => i.status !== 'resolved')
-  const recordings = messages.filter((m) => kindOf(m) !== 'text' && m.mediaUrl)
+  const recordings = [
+    ...messages
+      .filter((m) => {
+        const kind = kindOf(m)
+        return (kind === 'voice' || kind === 'video' || kind === 'call') && Boolean(m.mediaUrl)
+      })
+      .map((m) => ({ id: m.id, atMs: m.createdAtMs, kind: kindOf(m), message: m })),
+    ...calls
+      .filter((c) => c.recordingUrl && !messages.some((m) => m.mediaUrl === c.recordingUrl))
+      .map((c) => ({
+        id: `call-${c.id}`,
+        atMs: c.endedAtMs || c.startedAtMs,
+        kind: 'call' as const,
+        message: {
+          id: c.id,
+          from: 'owner' as const,
+          text: 'Call recording',
+          kind: 'call',
+          mediaUrl: c.recordingUrl,
+          durationMs: c.durationMs,
+          createdAtMs: c.endedAtMs || c.startedAtMs,
+        } satisfies ChatMessage,
+      })),
+  ].sort((a, b) => b.atMs - a.atMs)
   const agentLive = Boolean(current?.chatAgentLive)
 
   const send = async (e: FormEvent) => {
@@ -90,7 +117,7 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
         <div>
           <p className="eyebrow">Live desk</p>
           <h1>Inbox</h1>
-          <p className="muted">Play voice notes and clips, drive the line issue, take over from the bot.</p>
+          <p className="muted">Play voice notes and clips, take in-app calls, drive the line issue, take over from the bot.</p>
         </div>
         {current && (
           <span className={`pill ${agentLive ? 'ok' : 'warn'}`}>{agentLive ? 'Live agent' : 'Bot covering'}</span>
@@ -110,6 +137,11 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
                 <span className="inbox-meta">
                   {(c.unreadStaff ?? 0) > 0 && <span className="badge">{c.unreadStaff}</span>}
                   {ticket && <span className={`pill ${ticket.status === 'open' ? 'fail' : 'warn'}`}>{ISSUE_LABEL[ticket.status]}</span>}
+                  {(c.callStatus === 'ringing' || c.callStatus === 'in_call') && (
+                    <span className={`pill ${c.callStatus === 'ringing' ? 'fail gn-pulse' : 'ok'}`}>
+                      {c.callStatus === 'ringing' ? 'Calling' : 'On call'}
+                    </span>
+                  )}
                 </span>
               </button>
             )
@@ -234,14 +266,14 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
               <h2>Recordings</h2>
               <span className="muted tiny">{recordings.length}</span>
             </div>
-            {recordings.length === 0 && <p className="muted">Voice notes and 15-second clips from this chat show up here.</p>}
+            {recordings.length === 0 && <p className="muted">Voice notes, clips, and desk call recordings for this customer show up here.</p>}
             <div className="recording-list">
-              {recordings.map((m) => (
-                <div key={m.id} className="recording-card">
+              {recordings.map((item) => (
+                <div key={item.id} className="recording-card">
                   <span className="muted tiny">
-                    {kindOf(m) === 'video' ? 'Video' : 'Voice'} · {fmtWhen(m.createdAtMs)}
+                    {item.kind === 'video' ? 'Video' : item.kind === 'call' ? 'Call' : 'Voice'} · {fmtWhen(item.atMs)}
                   </span>
-                  <ChatBubbleBody m={m} customerId={selected} />
+                  <ChatBubbleBody m={item.message} customerId={selected} />
                 </div>
               ))}
             </div>

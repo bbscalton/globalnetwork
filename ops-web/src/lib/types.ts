@@ -31,6 +31,9 @@ export type Customer = {
   lat?: number | null
   lng?: number | null
   locationLabel?: string
+  callStatus?: 'idle' | 'ringing' | 'in_call' | 'ended' | 'missed' | string
+  liveCallId?: string
+  callRecording?: boolean
 }
 
 export type Plan = {
@@ -62,6 +65,22 @@ export type ChatMessage = {
   createdAtMs: number
   lat?: number | null
   lng?: number | null
+}
+
+export type VoiceCall = {
+  id: string
+  customerId?: string
+  from: 'customer' | 'owner'
+  status: 'ringing' | 'in_call' | 'ended' | 'missed' | string
+  offerSdp: string
+  answerSdp: string
+  recording: boolean
+  recordingUrl?: string | null
+  durationMs?: number
+  startedAtMs: number
+  answeredAtMs?: number
+  endedAtMs?: number
+  endedBy?: 'customer' | 'owner' | string
 }
 
 export type DeskRole = 'owner' | 'pending' | 'rejected'

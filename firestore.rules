@@ -85,6 +85,31 @@ service cloud.firestore {
         allow create, update: if isOwner() || (customerOwns(customerId) && customerApproved(customerId));
         allow delete: if isOwner();
       }
+
+      match /calls/{callId} {
+        allow read: if isOwner() || customerOwns(customerId);
+        allow create: if customerOwns(customerId) && customerApproved(customerId)
+          && request.resource.data.from == 'customer'
+          && request.resource.data.status == 'ringing'
+          && request.resource.data.keys().hasAll(['from', 'status', 'offerSdp', 'startedAtMs']);
+        allow update: if isOwner()
+          || (customerOwns(customerId) && customerApproved(customerId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'endedAtMs', 'endedBy']));
+        allow delete: if isOwner();
+
+        match /iceOffer/{iceId} {
+          allow read: if isOwner() || customerOwns(customerId);
+          allow create: if customerOwns(customerId) && customerApproved(customerId)
+            && request.resource.data.keys().hasAll(['candidate']);
+          allow update, delete: if false;
+        }
+        match /iceAnswer/{iceId} {
+          allow read: if isOwner() || customerOwns(customerId);
+          allow create: if isOwner() && request.resource.data.keys().hasAll(['candidate']);
+          allow update, delete: if false;
+        }
+      }
     }
   }
 }

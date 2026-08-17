@@ -10,12 +10,14 @@ function durationLabel(ms: number | undefined) {
   return `${m}:${s}`
 }
 
-export function kindOf(m: Pick<ChatMessage, 'kind' | 'mediaUrl' | 'text' | 'lat'>): 'voice' | 'video' | 'text' | 'location' {
+export function kindOf(m: Pick<ChatMessage, 'kind' | 'mediaUrl' | 'text' | 'lat'>): 'voice' | 'video' | 'text' | 'location' | 'call' {
   if (m.kind === 'location' || (m.lat != null && Number.isFinite(m.lat))) return 'location'
+  if (m.kind === 'call') return 'call'
   if (m.kind === 'voice' || m.kind === 'video' || m.kind === 'text') return m.kind
   const url = (m.mediaUrl ?? '').toLowerCase()
   const text = (m.text ?? '').toLowerCase()
   if (!url) return 'text'
+  if (url.includes('/calls/') || url.includes('.webm') || text.includes('call recording')) return 'call'
   if (url.includes('.mp4') || url.includes('video') || text.includes('video')) return 'video'
   if (url.includes('.m4a') || url.includes('audio') || url.includes('voice') || text.includes('voice')) return 'voice'
   return 'voice'
@@ -200,6 +202,14 @@ export function ChatBubbleBody({ m, customerId }: { m: ChatMessage; customerId?:
     return (
       <div className="media-block">
         <VoicePlayer url={m.mediaUrl} durationMs={m.durationMs} />
+      </div>
+    )
+  }
+  if (kind === 'call') {
+    return (
+      <div className="media-block">
+        {m.mediaUrl ? <VoicePlayer url={m.mediaUrl} durationMs={m.durationMs} /> : <p>{m.text || 'Voice call'}</p>}
+        {m.mediaUrl ? <p className="muted tiny">Call recording for this customer</p> : null}
       </div>
     )
   }

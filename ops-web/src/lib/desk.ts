@@ -44,6 +44,7 @@ export type DeskPulse = {
   offline: Customer[]
   openIssues: number
   applications: Customer[]
+  ringing: number
 }
 
 export function deskPulse(customers: Customer[], issues: IssueTicket[], now: number, onlineAfterMs: number): DeskPulse {
@@ -69,5 +70,6 @@ export function deskPulse(customers: Customer[], issues: IssueTicket[], now: num
     offline,
     openIssues: issues.filter((i) => i.status !== 'resolved').length,
     applications,
+    ringing: customers.filter((c) => c.callStatus === 'ringing' || c.callStatus === 'in_call').length,
   }
 }

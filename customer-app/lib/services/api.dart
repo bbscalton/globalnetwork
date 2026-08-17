@@ -236,4 +236,82 @@ class GnApi {
       'createdAtMs': DateTime.now().millisecondsSinceEpoch,
     });
   }
+
+  Future<List<Map<String, dynamic>>> fetchIceServers() async {
+    final fallback = [
+      {
+        'urls': ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'],
+      },
+    ];
+    try {
+      final token = await user?.getIdToken();
+      final res = await http.get(
+        Uri.parse('$r2BaseUrl/ice-servers'),
+        headers: {if (token != null) 'authorization': 'Bearer $token'},
+      );
+      if (res.statusCode >= 300) return fallback;
+      final payload = jsonDecode(res.body) as Map<String, dynamic>;
+      final servers = payload['iceServers'];
+      if (servers is List && servers.isNotEmpty) {
+        return servers.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+      }
+    } catch (_) {}
+    return fallback;
+  }
+
+  CollectionReference<Map<String, dynamic>> _calls(String customerId) {
+    return _db.collection('customers').doc(customerId).collection('calls');
+  }
+
+  Future<String> startVoiceCall({required String customerId, required String offerSdp}) async {
+    final ref = await _calls(customerId).add({
+      'from': 'customer',
+      'status': 'ringing',
+      'offerSdp': offerSdp,
+      'startedAtMs': DateTime.now().millisecondsSinceEpoch,
+    });
+    return ref.id;
+  }
+
+  Stream<Map<String, dynamic>?> watchCall(String customerId, String callId) {
+    return _calls(customerId).doc(callId).snapshots().map((snap) {
+      if (!snap.exists || snap.data() == null) return null;
+      return snap.data();
+    });
+  }
+
+  Stream<Map<String, dynamic>> watchIceAnswer(String customerId, String callId) {
+    return _calls(customerId).doc(callId).collection('iceAnswer').snapshots().expand((snap) {
+      return snap.docChanges
+          .where((change) => change.type == DocumentChangeType.added)
+          .map((change) => change.doc.data() ?? <String, dynamic>{});
+    });
+  }
+
+  Future<void> addIceOffer({
+    required String customerId,
+    required String callId,
+    required String candidate,
+    String? sdpMid,
+    int? sdpMLineIndex,
+  }) {
+    return _calls(customerId).doc(callId).collection('iceOffer').add({
+      'candidate': candidate,
+      'createdAtMs': DateTime.now().millisecondsSinceEpoch,
+      if (sdpMid != null && sdpMid.isNotEmpty) 'sdpMid': sdpMid,
+      if (sdpMLineIndex != null) 'sdpMLineIndex': sdpMLineIndex,
+    });
+  }
+
+  Future<void> hangupCall({
+    required String customerId,
+    required String callId,
+    required String status,
+  }) async {
+    await _calls(customerId).doc(callId).update({
+      'status': status,
+      'endedAtMs': DateTime.now().millisecondsSinceEpoch,
+      'endedBy': 'customer',
+    });
+  }
 }

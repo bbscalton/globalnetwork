@@ -50,7 +50,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>GlobalNetwork uses the camera for ID photos, line issues, and short chat clips.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>GlobalNetwork uses the microphone so you can send voice notes to the owner desk.</string>
+	<string>GlobalNetwork uses the microphone for voice notes and in-app calls to the owner desk.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>GlobalNetwork uses your library so you can attach a short chat clip or a photo of a line issue.</string>
 </dict>

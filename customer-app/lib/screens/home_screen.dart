@@ -3,10 +3,18 @@ import '../models/customer.dart';
 import '../theme.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, required this.account, required this.onChat, required this.onIssue, required this.onSignOut});
+  const HomeScreen({
+    super.key,
+    required this.account,
+    required this.onChat,
+    required this.onCall,
+    required this.onIssue,
+    required this.onSignOut,
+  });
 
   final CustomerAccount account;
   final VoidCallback onChat;
+  final VoidCallback onCall;
   final VoidCallback onIssue;
   final VoidCallback onSignOut;
 
@@ -122,6 +130,17 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
             label: const Text('Chat with GlobalNetwork'),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: onCall,
+            icon: const Icon(Icons.phone_in_talk),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0EA5E9),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            label: const Text('Call the desk'),
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(

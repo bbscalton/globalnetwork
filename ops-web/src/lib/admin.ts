@@ -2,6 +2,8 @@ import type { User } from 'firebase/auth'
 
 export const ADMIN_EMAIL = 'neuereatec@gmail.com'
 export const ORG_ID = (import.meta.env.VITE_ORG_ID as string | undefined)?.trim() || 'globalnetwork'
+export const R2_BASE =
+  (import.meta.env.VITE_R2_BASE as string | undefined)?.trim() || 'https://globalnetwork-media.neuereatec.workers.dev'
 
 export function userEmails(user: User | null | undefined): string[] {
   const raw = [user?.email, ...(user?.providerData.map((p) => p.email) ?? [])]

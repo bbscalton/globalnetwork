@@ -4,10 +4,12 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'firebase_options.dart';
 import 'models/customer.dart';
 import 'screens/chat_screen.dart';
+import 'screens/call_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/issue_screen.dart';
 import 'screens/login_screen.dart';
@@ -23,6 +25,16 @@ const r2BaseUrl = String.fromEnvironment(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.light,
+    ),
+  );
   var firebaseOk = kFirebaseOptionsReady;
   if (firebaseOk) {
     try {
@@ -236,6 +248,9 @@ class _GateState extends State<Gate> {
       account: account!,
       onChat: () {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(api: api, customerId: account!.id)));
+      },
+      onCall: () {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => CallScreen(api: api, customerId: account!.id)));
       },
       onIssue: () {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => IssueScreen(api: api, customerId: account!.id)));

@@ -7,6 +7,8 @@ type Env = {
   FIREBASE_PROJECT_ID?: string;
   FIREBASE_API_KEY?: string;
   MEDIA_SIGNING_SECRET?: string;
+  TURN_KEY_ID?: string;
+  TURN_KEY_API_TOKEN?: string;
 };
 
 type Status = "ok" | "warn" | "fail";
@@ -206,7 +208,51 @@ function isOwner(auth: { email: string; owner?: boolean } | null): boolean {
 }
 
 function allowedKey(key: string): boolean {
-  return /^orgs\/[^/]+\/customers\/[^/]+\/(issues|chat|kyc)\/.+/.test(key);
+  return /^orgs\/[^/]+\/customers\/[^/]+\/(issues|chat|kyc|calls)\/.+/.test(key);
+}
+
+type IceServer = { urls: string[]; username?: string; credential?: string };
+
+const STUN_ONLY: IceServer[] = [
+  { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] },
+];
+
+function withoutPort53(urls: string[]): string[] {
+  return urls.filter((url) => !url.includes(":53"));
+}
+
+async function iceServersFor(env: Env): Promise<{ iceServers: IceServer[]; turn: boolean }> {
+  const keyId = env.TURN_KEY_ID?.trim();
+  const token = env.TURN_KEY_API_TOKEN?.trim();
+  if (!keyId || !token) return { iceServers: STUN_ONLY, turn: false };
+  try {
+    const res = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ ttl: 3600 }),
+      },
+    );
+    if (!res.ok) return { iceServers: STUN_ONLY, turn: false };
+    const json = (await res.json()) as {
+      iceServers?: Array<{ urls?: string | string[]; username?: string; credential?: string }>;
+    };
+    const iceServers = (json.iceServers ?? [])
+      .map((server) => {
+        const urls = withoutPort53(Array.isArray(server.urls) ? server.urls : server.urls ? [server.urls] : []);
+        return {
+          urls,
+          ...(server.username ? { username: server.username } : {}),
+          ...(server.credential ? { credential: server.credential } : {}),
+        };
+      })
+      .filter((server) => server.urls.length > 0);
+    if (iceServers.length === 0) return { iceServers: STUN_ONLY, turn: false };
+    return { iceServers, turn: true };
+  } catch {
+    return { iceServers: STUN_ONLY, turn: false };
+  }
 }
 
 function isKycKey(key: string): boolean {
@@ -292,6 +338,13 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       return cors({ objects, bytes, truncated, customers });
     }
 
+    if ((path === "/ice-servers" || path === "/iceServers") && (request.method === "GET" || request.method === "POST")) {
+      const iceAuth = await verifyFirebaseToken(request, env);
+      if (!iceAuth) return cors({ error: "unauthorized" }, 401);
+      const payload = await iceServersFor(env);
+      return cors(payload);
+    }
+
     if (path === "/sign-upload" && request.method === "POST") {
       const auth = await verifyFirebaseToken(request, env);
       if (!auth) return cors({ error: "unauthorized" }, 401);
@@ -354,6 +407,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         headers.set("cache-control", "public, max-age=3600");
         const typed = "httpMetadata" in obj ? obj.httpMetadata?.contentType : undefined;
         if (typed) headers.set("content-type", typed);
+        else if (key.endsWith(".webm") || key.includes("/calls/")) headers.set("content-type", "audio/webm");
         else if (key.endsWith(".m4a") || key.includes("voice")) headers.set("content-type", "audio/mp4");
         else if (key.endsWith(".mp4") || key.includes("video")) headers.set("content-type", "video/mp4");
         if (request.method === "HEAD") {
