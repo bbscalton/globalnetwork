@@ -14,6 +14,8 @@ const STREETS = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 function esc(value: string) {
   return value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] || ch)
 }
+
+function markerIcon(tone: PinTone) {
   return L.divIcon({
     className: 'gn-pin',
     html: `<span class="gn-pin-dot" style="background:${PIN_COLORS[tone]}"></span>`,
