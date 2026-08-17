@@ -11,6 +11,10 @@ class CustomerAccount {
     required this.paidUntilMs,
     required this.balanceDue,
     required this.feeAmount,
+    required this.approvalStatus,
+    required this.rejectionReason,
+    required this.idPhotoUrl,
+    required this.billingPhotoUrl,
   });
 
   final String id;
@@ -24,6 +28,14 @@ class CustomerAccount {
   final int? paidUntilMs;
   final double balanceDue;
   final double feeAmount;
+  final String approvalStatus;
+  final String rejectionReason;
+  final String idPhotoUrl;
+  final String billingPhotoUrl;
+
+  bool get needsRegistration => approvalStatus == 'none' || approvalStatus == 'rejected';
+  bool get isPendingApproval => approvalStatus == 'pending';
+  bool get canUseApp => approvalStatus == 'approved' || approvalStatus.isEmpty;
 
   int daysLeft() {
     final until = paidUntilMs;
@@ -100,6 +112,10 @@ class CustomerAccount {
       paidUntilMs: data['paidUntilMs'] == null ? null : (data['paidUntilMs'] as num).toInt(),
       balanceDue: (data['balanceDue'] as num?)?.toDouble() ?? 0,
       feeAmount: (data['feeAmount'] as num?)?.toDouble() ?? 0,
+      approvalStatus: (data['approvalStatus'] ?? '') as String,
+      rejectionReason: (data['rejectionReason'] ?? '') as String,
+      idPhotoUrl: (data['idPhotoUrl'] ?? '') as String,
+      billingPhotoUrl: (data['billingPhotoUrl'] ?? '') as String,
     );
   }
 }

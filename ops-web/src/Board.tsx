@@ -5,7 +5,7 @@ import * as repo from './lib/repo'
 import { cyclePct, deskPulse, fmtDate, initials, statusTone } from './lib/desk'
 import { ONLINE_AFTER_MS } from './lib/firebase'
 
-type Filter = 'all' | CustomerStatus | 'due' | 'owed'
+type Filter = 'all' | CustomerStatus | 'due' | 'owed' | 'pending'
 
 export function Board({
   customers,
@@ -35,6 +35,8 @@ export function Board({
         if (!(left > 0 && left <= 3)) return false
       } else if (filter === 'owed') {
         if (!((c.balanceDue || 0) > 0 || c.status === 'grace')) return false
+      } else if (filter === 'pending') {
+        if (c.approvalStatus !== 'pending') return false
       } else if (filter !== 'all' && c.status !== filter) {
         return false
       }
@@ -66,7 +68,7 @@ export function Board({
           <p className="eyebrow">Today on the network</p>
           <h1>Owner desk</h1>
           <p className="muted">
-            Onboard a subscriber, collect a partial fee, or grant extra days when they cannot pay the full amount.
+            Onboard a subscriber, or review app applications. After you approve, grant days from the payment you received.
           </p>
         </div>
         <button className="btn btn-primary" type="button" onClick={() => setCreating(true)}>
@@ -75,6 +77,11 @@ export function Board({
       </header>
 
       <section className="queue-grid" aria-label="Work queues">
+        <button className="queue-card gn-glow" type="button" onClick={() => setFilter('pending')}>
+          <span className="queue-label">Applications</span>
+          <strong className={`count-pop ${pulse.applications.length ? 'gn-pulse' : ''}`}>{pulse.applications.length}</strong>
+          <span className="muted">{pulse.applications[0]?.name ?? 'No applications waiting'}</span>
+        </button>
         <button className="queue-card gn-glow" type="button" onClick={() => setFilter('due')}>
           <span className="queue-label">Renewals · 3 days</span>
           <strong className="count-pop">{pulse.dueSoon.length}</strong>
@@ -109,6 +116,7 @@ export function Board({
               ['suspended', 'Suspended'],
               ['due', 'Due soon'],
               ['owed', 'Owes'],
+              ['pending', 'Applications'],
             ] as Array<[Filter, string]>
           ).map(([id, label]) => (
             <button key={id} type="button" className={`chip ${filter === id ? 'is-on' : ''}`} onClick={() => setFilter(id)}>
@@ -146,6 +154,8 @@ export function Board({
                   <td>{c.planName || 'Unassigned'}</td>
                   <td>
                     <span className={`pill ${statusTone(c.status)}`}>{c.status}</span>
+                    {c.approvalStatus === 'pending' && <span className="pill warn">application</span>}
+                    {c.approvalStatus === 'rejected' && <span className="pill fail">rejected</span>}
                     {(c.unreadStaff ?? 0) > 0 && <span className="dot-unread" title="Unread chat" />}
                   </td>
                   <td>

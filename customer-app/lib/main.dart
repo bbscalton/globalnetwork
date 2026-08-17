@@ -11,6 +11,8 @@ import 'screens/chat_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/issue_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/pending_approval_screen.dart';
+import 'screens/registration_wizard.dart';
 import 'services/api.dart';
 import 'theme.dart';
 
@@ -216,6 +218,20 @@ class _GateState extends State<Gate> {
         ),
       );
     }
+    Future<void> signOut() async {
+      await api.signOut();
+      setState(() {
+        user = null;
+        account = null;
+      });
+    }
+
+    if (account!.needsRegistration) {
+      return RegistrationWizard(api: api, account: account!, onSignOut: () => signOut());
+    }
+    if (account!.isPendingApproval) {
+      return PendingApprovalScreen(account: account!, onSignOut: () => signOut());
+    }
     return HomeScreen(
       account: account!,
       onChat: () {
@@ -224,13 +240,7 @@ class _GateState extends State<Gate> {
       onIssue: () {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => IssueScreen(api: api, customerId: account!.id)));
       },
-      onSignOut: () async {
-        await api.signOut();
-        setState(() {
-          user = null;
-          account = null;
-        });
-      },
+      onSignOut: () => signOut(),
     );
   }
 }

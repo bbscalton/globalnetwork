@@ -13,6 +13,10 @@ service cloud.firestore {
         || customerId == request.auth.uid
       );
     }
+    function customerApproved(customerId) {
+      let d = get(/databases/$(database)/documents/customers/$(customerId)).data;
+      return !('approvalStatus' in d) || d.approvalStatus == 'approved';
+    }
 
     match /staffProfiles/{uid} {
       allow read, write: if false;
@@ -53,15 +57,15 @@ service cloud.firestore {
 
       match /chatMessages/{msgId} {
         allow read: if isOwner() || customerOwns(customerId);
-        allow create: if (isOwner() || customerOwns(customerId))
-          && request.resource.data.keys().hasAll(['from', 'text', 'createdAtMs']);
+        allow create: if isOwner()
+          || (customerOwns(customerId) && customerApproved(customerId)
+            && request.resource.data.keys().hasAll(['from', 'text', 'createdAtMs']));
         allow update, delete: if isOwner();
       }
 
       match /issues/{issueId} {
         allow read: if isOwner() || customerOwns(customerId);
-        allow create: if isOwner() || customerOwns(customerId);
-        allow update: if isOwner() || customerOwns(customerId);
+        allow create, update: if isOwner() || (customerOwns(customerId) && customerApproved(customerId));
         allow delete: if isOwner();
       }
     }

@@ -39,6 +39,10 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     unreadStaff: Number(data.unreadStaff ?? 0),
     createdAtMs: Number(data.createdAtMs ?? 0),
     uid: data.uid == null ? null : String(data.uid),
+    approvalStatus: (data.approvalStatus as Customer['approvalStatus']) || '',
+    rejectionReason: String(data.rejectionReason ?? ''),
+    idPhotoUrl: String(data.idPhotoUrl ?? ''),
+    billingPhotoUrl: String(data.billingPhotoUrl ?? ''),
   }
 }
 
@@ -207,6 +211,14 @@ export async function extendSubscription(input: {
   note: string
 }): Promise<{ paidUntilMs: number; status: CustomerStatus; balanceDue: number }> {
   return callable('extendSubscription', input)
+}
+
+export async function reviewCustomerApplication(
+  customerId: string,
+  decision: 'approved' | 'rejected',
+  reason = '',
+): Promise<void> {
+  await callable('reviewCustomerApplication', { customerId, decision, reason })
 }
 
 export async function suspendCustomer(customerId: string): Promise<void> {

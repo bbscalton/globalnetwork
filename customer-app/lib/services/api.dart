@@ -132,9 +132,27 @@ class GnApi {
     required String fileName,
     required Uint8List bytes,
     required String contentType,
+  }) {
+    final key = 'orgs/globalnetwork/customers/$customerId/issues/$issueId/$fileName';
+    return _putR2(key: key, bytes: bytes, contentType: contentType);
+  }
+
+  Future<String> uploadKycPhoto({
+    required String customerId,
+    required String kind,
+    required Uint8List bytes,
+  }) {
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final key = 'orgs/globalnetwork/customers/$customerId/kyc/$kind-$stamp.jpg';
+    return _putR2(key: key, bytes: bytes, contentType: 'image/jpeg');
+  }
+
+  Future<String> _putR2({
+    required String key,
+    required Uint8List bytes,
+    required String contentType,
   }) async {
     final token = await user?.getIdToken();
-    final key = 'orgs/globalnetwork/customers/$customerId/issues/$issueId/$fileName';
     final sign = await http.post(
       Uri.parse('$r2BaseUrl/sign-upload'),
       headers: {
@@ -144,7 +162,7 @@ class GnApi {
       body: jsonEncode({'key': key, 'contentType': contentType}),
     );
     if (sign.statusCode >= 300) {
-      throw Exception('sign-upload failed ${sign.statusCode}');
+      throw Exception('Could not prepare the photo upload (${sign.statusCode}).');
     }
     final payload = jsonDecode(sign.body) as Map<String, dynamic>;
     final putUrl = payload['putUrl'] as String;
@@ -156,8 +174,26 @@ class GnApi {
       },
       body: bytes,
     );
-    if (put.statusCode >= 300) throw Exception('R2 PUT failed ${put.statusCode}');
+    if (put.statusCode >= 300) throw Exception('Could not upload the photo (${put.statusCode}).');
     return '$r2BaseUrl/object?key=${Uri.encodeComponent(key)}';
+  }
+
+  Future<void> submitApplication({
+    required String customerId,
+    required String name,
+    required String phone,
+    required String address,
+    required String idPhotoUrl,
+    required String billingPhotoUrl,
+  }) async {
+    await _functions.httpsCallable('submitCustomerApplication').call(<String, dynamic>{
+      'customerId': customerId,
+      'name': name,
+      'phone': phone,
+      'address': address,
+      'idPhotoUrl': idPhotoUrl,
+      'billingPhotoUrl': billingPhotoUrl,
+    });
   }
 
   Future<void> createIssue({

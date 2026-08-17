@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, db, requireOwner, sendToToken, writeAudit } from "./context";
+import * as admin from "firebase-admin";
+import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, db, ownerFcmToken, requireOwner, sendToToken, writeAudit } from "./context";
 
 export const ensureOrgDefaults = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
@@ -118,6 +119,7 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
     createdAtMs: Date.now(),
     createdBy: owner.uid,
     uid: null,
+    approvalStatus: "approved",
   });
   await writeAudit({ action: "create_customer", adminEmail: owner.email, targetUid: ref.id, detail: name });
   return { customerId: ref.id };
@@ -159,6 +161,8 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
       graceUntilMs,
       lastPaymentAmount: amountPaid,
       lastPaymentMs: now,
+      approvalStatus: "approved",
+      approvedAtMs: now,
     });
     const payRef = ref.collection("payments").doc();
     tx.set(payRef, {
@@ -209,8 +213,16 @@ export const linkCustomerAccount = onCall(CALLABLE, async (request) => {
     }
     const matches = await db.collection("customers").where("email", "==", email).limit(1).get();
     if (!matches.empty) {
-      await matches.docs[0].ref.update({ uid, lastSeenMs: Date.now() });
-      return { customerId: matches.docs[0].id };
+      const snap = matches.docs[0];
+      const current = String(snap.get("approvalStatus") ?? "");
+      const patch: Record<string, unknown> = { uid, lastSeenMs: Date.now() };
+      if (!current) {
+        const createdBy = String(snap.get("createdBy") ?? "");
+        const hasKyc = Boolean(snap.get("idPhotoUrl") || snap.get("kycSubmittedAtMs"));
+        patch.approvalStatus = createdBy === uid && !hasKyc ? "none" : "approved";
+      }
+      await snap.ref.update(patch);
+      return { customerId: snap.id };
     }
     const displayName = String(claims?.name ?? "").trim() || email.split("@")[0];
     const ref = db.collection("customers").doc();
@@ -234,6 +246,7 @@ export const linkCustomerAccount = onCall(CALLABLE, async (request) => {
       createdAtMs: Date.now(),
       createdBy: uid,
       uid,
+      approvalStatus: "none",
     });
     return { customerId: ref.id };
   } catch (error) {
@@ -254,4 +267,95 @@ export const heartbeat = onCall(CALLABLE, async (request) => {
   }
   await ref.update({ lastSeenMs: Date.now(), fcmToken: request.data?.fcmToken ?? snap.get("fcmToken") ?? null });
   return { ok: true };
+});
+
+export const submitCustomerApplication = onCall(CALLABLE, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const customerId = String(request.data?.customerId ?? "").trim();
+  const name = String(request.data?.name ?? "").trim();
+  const phone = String(request.data?.phone ?? "").trim();
+  const address = String(request.data?.address ?? "").trim();
+  const idPhotoUrl = String(request.data?.idPhotoUrl ?? "").trim();
+  const billingPhotoUrl = String(request.data?.billingPhotoUrl ?? "").trim();
+  if (!customerId || !name || !phone || !address || !idPhotoUrl || !billingPhotoUrl) {
+    throw new HttpsError("invalid-argument", "Name, phone, address, ID photo, and billing-address photo are required.");
+  }
+  const ref = db.collection("customers").doc(customerId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.get("uid") !== uid) {
+    throw new HttpsError("permission-denied", "Not your customer record.");
+  }
+  if (String(snap.get("approvalStatus") ?? "") === "approved") {
+    throw new HttpsError("failed-precondition", "This account is already approved.");
+  }
+  await ref.update({
+    name,
+    phone,
+    address,
+    idPhotoUrl,
+    billingPhotoUrl,
+    approvalStatus: "pending",
+    kycSubmittedAtMs: Date.now(),
+    rejectionReason: admin.firestore.FieldValue.delete(),
+    lastSeenMs: Date.now(),
+  });
+  await sendToToken(
+    await ownerFcmToken(),
+    "New GlobalNetwork application",
+    `${name} submitted ID and billing photos for approval.`,
+    { type: "application", customerId },
+  );
+  return { ok: true, customerId };
+});
+
+export const reviewCustomerApplication = onCall(CALLABLE, async (request) => {
+  const owner = await requireOwner(request);
+  const customerId = String(request.data?.customerId ?? "").trim();
+  const decision = String(request.data?.decision ?? "").trim().toLowerCase();
+  const reason = String(request.data?.reason ?? "").trim();
+  if (!customerId || (decision !== "approved" && decision !== "rejected")) {
+    throw new HttpsError("invalid-argument", "customerId and decision (approved|rejected) are required.");
+  }
+  if (decision === "rejected" && !reason) {
+    throw new HttpsError("invalid-argument", "Say why the application was rejected.");
+  }
+  const ref = db.collection("customers").doc(customerId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
+  const now = Date.now();
+  if (decision === "approved") {
+    await ref.update({
+      approvalStatus: "approved",
+      approvedAtMs: now,
+      approvedBy: owner.email,
+      rejectionReason: admin.firestore.FieldValue.delete(),
+    });
+    await sendToToken(
+      snap.get("fcmToken") as string | undefined,
+      "GlobalNetwork approved you",
+      "Your application is approved. GlobalNetwork will set your package and days from payment received.",
+      { type: "application", customerId },
+    );
+  } else {
+    await ref.update({
+      approvalStatus: "rejected",
+      rejectedAtMs: now,
+      rejectedBy: owner.email,
+      rejectionReason: reason,
+    });
+    await sendToToken(
+      snap.get("fcmToken") as string | undefined,
+      "Application needs changes",
+      reason,
+      { type: "application", customerId },
+    );
+  }
+  await writeAudit({
+    action: `application_${decision}`,
+    adminEmail: owner.email,
+    targetUid: customerId,
+    detail: reason || "approved",
+  });
+  return { ok: true, decision };
 });

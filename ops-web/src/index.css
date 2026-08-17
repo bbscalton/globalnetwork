@@ -126,7 +126,7 @@ p.fail { padding: 0.7rem 0.85rem; border-radius: 12px; }
 .desk-hero.compact { align-items: center; }
 .queue-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.85rem;
 }
 .queue-card {
@@ -216,6 +216,13 @@ p.fail { padding: 0.7rem 0.85rem; border-radius: 12px; }
 .ticket-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
 .photos { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.6rem 0; }
 .photos img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
+.kyc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.85rem; }
+.kyc-grid figcaption { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.4rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.kyc-photo { width: 100%; max-height: 280px; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); }
+.kyc-placeholder {
+  min-height: 120px; border-radius: 14px; border: 1px dashed var(--line);
+  display: grid; place-items: center; color: var(--muted); font-size: 0.85rem;
+}
 
 .inbox-layout { display: grid; grid-template-columns: 280px 1fr; gap: 1rem; min-height: 70vh; }
 .inbox-list { display: grid; align-content: start; gap: 0.4rem; }

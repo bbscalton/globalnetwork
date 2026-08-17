@@ -1,4 +1,5 @@
 export type CustomerStatus = 'active' | 'grace' | 'expired' | 'suspended'
+export type ApprovalStatus = 'none' | 'pending' | 'approved' | 'rejected' | ''
 
 export type Customer = {
   id: string
@@ -7,6 +8,10 @@ export type Customer = {
   email: string
   address: string
   status: CustomerStatus
+  approvalStatus: ApprovalStatus
+  rejectionReason: string
+  idPhotoUrl: string
+  billingPhotoUrl: string
   planId: string
   planName: string
   planDays: number

@@ -142,7 +142,11 @@ function isOwner(auth: { email: string } | null): boolean {
 }
 
 function allowedKey(key: string): boolean {
-  return /^orgs\/[^/]+\/customers\/[^/]+\/(issues|chat)\/.+/.test(key);
+  return /^orgs\/[^/]+\/customers\/[^/]+\/(issues|chat|kyc)\/.+/.test(key);
+}
+
+function isKycKey(key: string): boolean {
+  return /\/kyc\//.test(key);
 }
 
 const APP_APK_KEY = "orgs/globalnetwork/app/globalnetwork-customer.apk";
@@ -251,6 +255,10 @@ export default {
         return cors({ ok: true, key });
       }
       if (request.method === "GET" || request.method === "HEAD") {
+        if (isKycKey(key)) {
+          const viewAuth = await verifyFirebaseToken(request, env);
+          if (!viewAuth) return cors({ error: "unauthorized" }, 401);
+        }
         const obj = await env.MEDIA_BUCKET.get(key);
         if (!obj) return cors({ error: "not found" }, 404);
         const headers = new Headers();

@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { ChatMessage, Customer, IssueTicket, Payment, Plan } from './lib/types'
 import * as repo from './lib/repo'
 import { cyclePct, fmtDate, fmtWhen, initials, statusTone } from './lib/desk'
+import { AuthImage } from './lib/AuthImage'
 
 export function CustomerPage({
   customers,
@@ -27,6 +28,7 @@ export function CustomerPage({
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -142,6 +144,71 @@ export function CustomerPage({
 
       {err && <p className="fail">{err}</p>}
       {msg && <p className="ok-text">{msg}</p>}
+
+      {(customer.approvalStatus === 'pending' || customer.approvalStatus === 'rejected' || customer.idPhotoUrl) && (
+        <section className="card action-card">
+          <div className="card-head">
+            <h2>Service application</h2>
+            {customer.approvalStatus === 'pending' && <span className="pill warn">Awaiting approval</span>}
+            {customer.approvalStatus === 'approved' && <span className="pill ok">Approved</span>}
+            {customer.approvalStatus === 'rejected' && <span className="pill fail">Rejected</span>}
+          </div>
+          <p className="muted">
+            They submitted name, address, phone, an ID photo, and a billing-address photo. Approve first, then assign
+            payment and days below from what they paid or your own assessment.
+          </p>
+          {customer.rejectionReason && <p className="fail">{customer.rejectionReason}</p>}
+          <div className="kyc-grid">
+            {customer.idPhotoUrl && (
+              <figure>
+                <figcaption>ID</figcaption>
+                <AuthImage url={customer.idPhotoUrl} alt="Customer ID" />
+              </figure>
+            )}
+            {customer.billingPhotoUrl && (
+              <figure>
+                <figcaption>Billing address</figcaption>
+                <AuthImage url={customer.billingPhotoUrl} alt="Billing address proof" />
+              </figure>
+            )}
+          </div>
+          {customer.approvalStatus === 'pending' && (
+            <div className="form-row" style={{ marginTop: '1rem' }}>
+              <label>
+                If you reject, say why
+                <input value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Photo is unclear…" />
+              </label>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await repo.reviewCustomerApplication(customer.id, 'approved')
+                    return 'Application approved. Assign a plan and grant days from the payment you received.'
+                  })
+                }
+              >
+                Approve
+              </button>
+              <button
+                className="btn btn-ghost danger"
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    await repo.reviewCustomerApplication(customer.id, 'rejected', rejectReason.trim())
+                    setRejectReason('')
+                    return 'Application sent back to the customer to fix.'
+                  })
+                }
+              >
+                Reject
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="card action-card">
         <div className="card-head">

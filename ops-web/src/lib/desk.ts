@@ -43,6 +43,7 @@ export type DeskPulse = {
   unread: Customer[]
   offline: Customer[]
   openIssues: number
+  applications: Customer[]
 }
 
 export function deskPulse(customers: Customer[], issues: IssueTicket[], now: number, onlineAfterMs: number): DeskPulse {
@@ -55,6 +56,7 @@ export function deskPulse(customers: Customer[], issues: IssueTicket[], now: num
   const collections = customers.filter((c) => (c.balanceDue || 0) > 0 || c.status === 'grace')
   const unread = customers.filter((c) => (c.unreadStaff ?? 0) > 0)
   const offline = customers.filter((c) => c.status === 'active' && (!c.lastSeenMs || now - c.lastSeenMs > onlineAfterMs))
+  const applications = customers.filter((c) => c.approvalStatus === 'pending')
   return {
     total: customers.length,
     active: customers.filter((c) => c.status === 'active').length,
@@ -66,5 +68,6 @@ export function deskPulse(customers: Customer[], issues: IssueTicket[], now: num
     unread,
     offline,
     openIssues: issues.filter((i) => i.status !== 'resolved').length,
+    applications,
   }
 }
