@@ -1,7 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import * as admin from "firebase-admin";
-import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, db, ownerFcmToken, requireOwner, sendToToken, writeAudit } from "./context";
+import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, ownerFcmToken, requireOwner, sendToToken, writeAudit } from "./context";
 
 export const ensureOrgDefaults = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
@@ -297,7 +296,7 @@ export const submitCustomerApplication = onCall(CALLABLE, async (request) => {
     billingPhotoUrl,
     approvalStatus: "pending",
     kycSubmittedAtMs: Date.now(),
-    rejectionReason: admin.firestore.FieldValue.delete(),
+    rejectionReason: FieldValue.delete(),
     lastSeenMs: Date.now(),
   });
   await sendToToken(
@@ -329,7 +328,7 @@ export const reviewCustomerApplication = onCall(CALLABLE, async (request) => {
       approvalStatus: "approved",
       approvedAtMs: now,
       approvedBy: owner.email,
-      rejectionReason: admin.firestore.FieldValue.delete(),
+      rejectionReason: FieldValue.delete(),
     });
     await sendToToken(
       snap.get("fcmToken") as string | undefined,

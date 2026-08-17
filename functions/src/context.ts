@@ -1,6 +1,10 @@
-import * as admin from "firebase-admin";
+import { getApp, getApps, initializeApp } from "firebase-admin/app";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { getMessaging } from "firebase-admin/messaging";
 import { logger } from "firebase-functions";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
+
+export { FieldValue };
 
 export const CALLABLE = {
   region: "us-central1" as const,
@@ -13,18 +17,11 @@ export const DEFAULT_ORG_ID = "globalnetwork";
 export const CURRENCY = "XCD";
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function getDb(): FirebaseFirestore.Firestore {
-  if (!admin.apps.length) admin.initializeApp();
-  return admin.firestore();
+function firebaseApp() {
+  return getApps().length ? getApp() : initializeApp();
 }
 
-export const db = new Proxy({} as FirebaseFirestore.Firestore, {
-  get(_target, prop, _receiver) {
-    const real = getDb() as unknown as Record<PropertyKey, unknown>;
-    const value = real[prop];
-    return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(real) : value;
-  },
-}) as FirebaseFirestore.Firestore;
+export const db = getFirestore(firebaseApp());
 
 export function requireAuth(request: CallableRequest): { uid: string; email: string } {
   const uid = request.auth?.uid;
@@ -60,7 +57,7 @@ export async function writeAudit(entry: {
 export async function sendToToken(token: string | undefined, title: string, body: string, data: Record<string, string>): Promise<void> {
   if (!token) return;
   try {
-    await admin.messaging().send({
+    await getMessaging(firebaseApp()).send({
       token,
       notification: { title, body },
       data,
