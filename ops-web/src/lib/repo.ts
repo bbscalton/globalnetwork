@@ -43,6 +43,10 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     rejectionReason: String(data.rejectionReason ?? ''),
     idPhotoUrl: String(data.idPhotoUrl ?? ''),
     billingPhotoUrl: String(data.billingPhotoUrl ?? ''),
+    chatAgentLive: data.chatAgentLive === true,
+    lastChatPreview: String(data.lastChatPreview ?? ''),
+    lastChatAtMs: Number(data.lastChatAtMs ?? 0),
+    lastChatKind: String(data.lastChatKind ?? ''),
   }
 }
 
@@ -99,7 +103,7 @@ export function observeChat(customerId: string, onData: (rows: ChatMessage[]) =>
         const fromRaw = String(data.from ?? 'customer')
         return {
           id: d.id,
-          from: isOwnerSender(fromRaw) ? 'owner' : 'customer',
+          from: fromRaw === 'bot' ? 'bot' : isOwnerSender(fromRaw) ? 'owner' : 'customer',
           text: String(data.text ?? ''),
           kind: String(data.kind ?? 'text'),
           mediaUrl: data.mediaUrl == null ? null : String(data.mediaUrl),
@@ -165,12 +169,38 @@ export function observeIssues(onData: (rows: IssueTicket[]) => void): Unsubscrib
   })
 }
 
-export async function sendChat(customerId: string, text: string, from: 'owner' | 'customer' = 'owner'): Promise<void> {
+export async function sendChat(customerId: string, text: string, from: 'owner' | 'customer' | 'bot' = 'owner'): Promise<void> {
   const database = requireDb()
   await addDoc(collection(database, COL.customers, customerId, COL.chatMessages), {
     from,
     text,
     kind: 'text',
+    createdAtMs: Date.now(),
+  })
+  if (from === 'owner') {
+    await updateDoc(doc(database, COL.customers, customerId), { chatAgentLive: true })
+  }
+}
+
+export async function setChatAgentLive(customerId: string, live: boolean): Promise<void> {
+  const database = requireDb()
+  await updateDoc(doc(database, COL.customers, customerId), { chatAgentLive: live })
+  await addDoc(collection(database, COL.customers, customerId, COL.chatMessages), {
+    from: live ? 'owner' : 'bot',
+    text: live
+      ? 'A live GlobalNetwork agent has joined. The desk bot is stepping back.'
+      : 'The live agent stepped back. I will keep covering until someone takes over again.',
+    kind: 'text',
+    createdAtMs: Date.now(),
+  })
+}
+
+export async function createIssue(customerId: string, title: string, body: string): Promise<void> {
+  await addDoc(collection(requireDb(), COL.customers, customerId, COL.issues), {
+    title,
+    body,
+    status: 'open',
+    photoUrls: [],
     createdAtMs: Date.now(),
   })
 }

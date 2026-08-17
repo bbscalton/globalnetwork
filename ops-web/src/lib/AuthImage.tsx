@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { auth } from './firebase'
 
-export function AuthImage({ url, alt }: { url: string; alt: string }) {
+export function AuthImage({ url, alt, className }: { url: string; alt: string; className?: string }) {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     let gone = false
@@ -24,5 +24,5 @@ export function AuthImage({ url, alt }: { url: string; alt: string }) {
     }
   }, [url])
   if (!src) return <div className="kyc-placeholder">Loading photo…</div>
-  return <img className="kyc-photo" src={src} alt={alt} />
+  return <img className={className || 'kyc-photo'} src={src} alt={alt} />
 }

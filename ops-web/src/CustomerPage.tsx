@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { ChatMessage, Customer, IssueTicket, Payment, Plan } from './lib/types'
 import * as repo from './lib/repo'
+import { ChatBubbleBody } from './ChatMedia'
 import { cyclePct, fmtDate, fmtWhen, initials, statusTone } from './lib/desk'
 import { AuthImage } from './lib/AuthImage'
 
@@ -351,8 +352,8 @@ export function CustomerPage({
           <div className="thread">
             {messages.map((m) => (
               <div key={m.id} className={`bubble ${m.from}`}>
-                <span className="muted tiny">{m.from === 'owner' ? 'Owner' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
-                <p>{m.text}</p>
+                <span className="muted tiny">{m.from === 'owner' ? 'You' : m.from === 'bot' ? 'Desk bot' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
+                <ChatBubbleBody m={m} />
               </div>
             ))}
             {messages.length === 0 && <p className="muted">No messages yet.</p>}
@@ -372,14 +373,14 @@ export function CustomerPage({
           {relatedIssues.length === 0 && <p className="muted">No line issues on this account.</p>}
           {relatedIssues.map((issue) => (
             <article key={issue.id} className="ticket">
-              <span className={`pill ${issue.status === 'resolved' ? 'ok' : issue.status === 'open' ? 'fail' : 'warn'}`}>{issue.status}</span>
+              <span className={`pill ${issue.status === 'resolved' ? 'ok' : issue.status === 'open' ? 'fail' : 'warn'}`}>{issue.status === 'in_progress' ? 'Ongoing' : issue.status === 'open' ? 'Still open' : 'Resolved'}</span>
               <h3>{issue.title}</h3>
               <p className="muted tiny">{fmtWhen(issue.createdAtMs)}</p>
               <p>{issue.body}</p>
               <div className="photos">
                 {issue.photoUrls.map((url) => (
                   <a key={url} href={url} target="_blank" rel="noreferrer">
-                    <img src={url} alt="" />
+                    <AuthImage url={url} alt="" className="issue-thumb" />
                   </a>
                 ))}
               </div>
@@ -391,7 +392,7 @@ export function CustomerPage({
                     type="button"
                     onClick={() => void repo.setIssueStatus(customer.id, issue.id, status)}
                   >
-                    {status.replace('_', ' ')}
+                    {status === 'in_progress' ? 'Ongoing' : status === 'open' ? 'Still open' : 'Resolved'}
                   </button>
                 ))}
               </div>

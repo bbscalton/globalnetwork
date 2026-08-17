@@ -225,7 +225,7 @@ function Shell({
         <Routes>
           <Route path="/" element={<Board customers={customers} plans={plans} issues={issues} now={now} />} />
           <Route path="/c/:id" element={<CustomerPage customers={customers} plans={plans} issues={issues} now={now} />} />
-          <Route path="/chat" element={<ChatDesk customers={customers} />} />
+          <Route path="/chat" element={<ChatDesk customers={customers} issues={issues} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
           <Route path="/plans" element={<PlansDesk plans={plans} customers={customers} now={now} />} />
           <Route path="/devices" element={<DevicesDesk />} />

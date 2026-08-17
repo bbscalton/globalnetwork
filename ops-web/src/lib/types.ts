@@ -24,6 +24,10 @@ export type Customer = {
   unreadStaff?: number
   createdAtMs: number
   uid?: string | null
+  chatAgentLive?: boolean
+  lastChatPreview?: string
+  lastChatAtMs?: number
+  lastChatKind?: string
 }
 
 export type Plan = {
@@ -47,7 +51,7 @@ export type Payment = {
 
 export type ChatMessage = {
   id: string
-  from: 'customer' | 'owner'
+  from: 'customer' | 'owner' | 'bot'
   text: string
   kind?: 'text' | 'voice' | 'video' | string
   mediaUrl?: string | null

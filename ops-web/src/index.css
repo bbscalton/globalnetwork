@@ -238,6 +238,7 @@ p.fail { padding: 0.7rem 0.85rem; border-radius: 12px; }
 .inbox-item.is-on { border-color: rgba(34, 211, 238, 0.45); background: rgba(34, 211, 238, 0.1); }
 .badge { background: #f87171; color: #fff; border-radius: 999px; font-size: 0.7rem; padding: 0.1rem 0.4rem; }
 .chat-card { display: grid; grid-template-rows: auto 1fr auto; min-height: 420px; }
+.inbox-thread.chat-card { grid-template-rows: auto auto 1fr auto; }
 .account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
 .account-grid p { margin: 0; display: grid; gap: 0.2rem; }
 .role-form { flex-wrap: wrap; align-items: center; }
@@ -315,3 +316,68 @@ p.fail { padding: 0.7rem 0.85rem; border-radius: 12px; }
 .cap-row span:first-child { display: grid; gap: 0.12rem; min-width: 0; }
 .pill.poe { background: rgba(34, 211, 238, 0.16); color: #67e8f9; }
 .device-skip { border-color: rgba(248, 113, 113, 0.35); }
+
+.inbox-pro { grid-template-columns: 280px minmax(0, 1fr) 300px; align-items: stretch; }
+.inbox-pro .chat-card { min-height: min(78vh, 860px); }
+.inbox-list { max-height: min(78vh, 860px); overflow: auto; }
+.inbox-meta { display: grid; justify-items: end; gap: 0.25rem; }
+.clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.chat-head { align-items: flex-start; }
+.chat-head-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+.bot-banner {
+  margin: 0 0 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde68a;
+  font-size: 0.82rem;
+}
+.bubble.bot { background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.25); max-width: 92%; }
+.chat-side { display: grid; align-content: start; gap: 1rem; }
+.side-issue { display: grid; gap: 0.45rem; padding: 0.65rem 0; border-top: 1px solid var(--line); }
+.side-issue:first-of-type { border-top: 0; padding-top: 0; }
+.recording-list { display: grid; gap: 0.75rem; }
+.recording-card { display: grid; gap: 0.4rem; }
+.media-skeleton {
+  min-height: 52px; border-radius: 12px; border: 1px dashed var(--line);
+  display: grid; place-items: center; color: var(--muted); font-size: 0.82rem;
+}
+.media-skeleton.video { min-height: 160px; }
+.voice-player {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 0.6rem; align-items: center;
+  min-width: min(100%, 280px); padding: 0.35rem 0.2rem 0.15rem;
+}
+.play-hit {
+  width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer;
+  background: linear-gradient(180deg, #38bdf8, var(--blue)); color: #041018; font-weight: 800;
+}
+.play-hit.xl {
+  position: absolute; inset: auto; width: 58px; height: 58px; font-size: 1.2rem;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+}
+.play-hit.is-on { background: rgba(255,255,255,0.16); color: #fff; }
+.wave { display: flex; align-items: flex-end; gap: 2px; height: 36px; }
+.wave span { flex: 1; border-radius: 99px; background: rgba(148, 163, 184, 0.35); min-height: 20%; }
+.wave span.is-lit { background: linear-gradient(180deg, #67e8f9, #0ea5e9); }
+.voice-time { font-variant-numeric: tabular-nums; font-size: 0.75rem; color: var(--muted); }
+.video-stage { position: relative; border-radius: 14px; overflow: hidden; background: #000; aspect-ratio: 16/9; }
+.video-stage .chat-clip { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
+.video-expand {
+  position: absolute; right: 0.45rem; bottom: 0.45rem;
+  background: rgba(2,6,23,0.72); color: #fff; border: 1px solid var(--line);
+  border-radius: 999px; padding: 0.2rem 0.55rem; font-size: 0.72rem; cursor: pointer;
+}
+.media-lightbox {
+  position: fixed; inset: 0; z-index: 50; background: rgba(2, 6, 23, 0.86);
+  display: grid; place-items: center; padding: 1.5rem;
+}
+.lightbox-clip { width: min(100%, 960px); max-height: 82vh; border-radius: 16px; background: #000; }
+.issue-thumb { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
+
+@media (max-width: 1180px) {
+  .inbox-pro { grid-template-columns: 240px 1fr; }
+  .chat-side { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 980px) {
+  .inbox-pro, .chat-side { grid-template-columns: 1fr; }
+}

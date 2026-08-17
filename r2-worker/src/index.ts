@@ -33,13 +33,13 @@ function parseKey(key: string): { orgId: string | null; customerId: string | nul
 }
 
 async function ensureTables(env: Env): Promise<void> {
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS storage_quotas (
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS storage_quotas (
       customer_id TEXT PRIMARY KEY,
       used_bytes INTEGER NOT NULL DEFAULT 0,
       updated_at_ms INTEGER NOT NULL
-    );
-  `);
+    )`,
+  ).run();
 }
 
 async function probeD1(env: Env): Promise<{ status: Status; message: string; latencyMs: number }> {
@@ -127,7 +127,7 @@ function b64url(part: string): Uint8Array {
   return out;
 }
 
-type FirebaseJwt = { kid?: string; alg?: string; iss?: string; aud?: string; exp?: number; sub?: string; email?: string };
+type FirebaseJwt = { kid?: string; alg?: string; iss?: string; aud?: string; exp?: number; sub?: string; email?: string; owner?: boolean };
 
 let jwksCache: { atMs: number; keys: Array<JsonWebKey & { kid?: string }> } | null = null;
 
@@ -141,7 +141,7 @@ async function firebaseJwks(): Promise<Array<JsonWebKey & { kid?: string }>> {
   return keys;
 }
 
-async function verifyFirebaseJwt(token: string, projectId: string): Promise<{ uid: string; email: string } | null> {
+async function verifyFirebaseJwt(token: string, projectId: string): Promise<{ uid: string; email: string; owner: boolean } | null> {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   let header: FirebaseJwt;
@@ -161,22 +161,22 @@ async function verifyFirebaseJwt(token: string, projectId: string): Promise<{ ui
   if (!jwk) return null;
   const cryptoKey = await crypto.subtle.importKey(
     "jwk",
-    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: "RS256" },
+    { kty: "RSA", n: jwk.n, e: jwk.e },
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["verify"],
   );
   const ok = await crypto.subtle.verify(
-    "RSASSA-PKCS1-v1_5",
+    { name: "RSASSA-PKCS1-v1_5" },
     cryptoKey,
     b64url(parts[2]),
     new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
   );
   if (!ok) return null;
-  return { uid: payload.sub, email: (payload.email ?? "").trim().toLowerCase() };
+  return { uid: payload.sub, email: (payload.email ?? "").trim().toLowerCase(), owner: payload.owner === true };
 }
 
-async function verifyFirebaseToken(request: Request, env: Env): Promise<{ uid: string; email: string } | null> {
+async function verifyFirebaseToken(request: Request, env: Env): Promise<{ uid: string; email: string; owner?: boolean } | null> {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) return null;
@@ -201,8 +201,8 @@ async function verifyFirebaseToken(request: Request, env: Env): Promise<{ uid: s
   return { uid: user.localId, email: (user.email ?? "").trim().toLowerCase() };
 }
 
-function isOwner(auth: { email: string } | null): boolean {
-  return Boolean(auth?.email && auth.email === OWNER_EMAIL);
+function isOwner(auth: { email: string; owner?: boolean } | null): boolean {
+  return Boolean(auth?.email && (auth.email === OWNER_EMAIL || auth.owner === true));
 }
 
 function allowedKey(key: string): boolean {
@@ -228,6 +228,16 @@ function apkHeaders(size: number): Headers {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    try {
+      return await handleRequest(request, env);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "upload failed";
+      return cors({ error: message }, 500);
+    }
+  },
+};
+
+async function handleRequest(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") return cors({ ok: true });
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
@@ -302,19 +312,25 @@ export default {
       if (request.method === "PUT") {
         const auth = await verifyFirebaseToken(request, env);
         if (!auth) return cors({ error: "unauthorized" }, 401);
-        await env.MEDIA_BUCKET.put(key, request.body, {
-          httpMetadata: { contentType: request.headers.get("content-type") || "application/octet-stream" },
+        const contentType = request.headers.get("content-type") || "application/octet-stream";
+        const bytes = await request.arrayBuffer();
+        await env.MEDIA_BUCKET.put(key, bytes, {
+          httpMetadata: { contentType },
         });
         const parsed = parseKey(key);
-        if (parsed.customerId) {
-          await ensureTables(env);
-          const size = Number(request.headers.get("content-length") || 0);
-          await env.DB.prepare(
-            `INSERT INTO storage_quotas (customer_id, used_bytes, updated_at_ms) VALUES (?, ?, ?)
+        try {
+          if (parsed.customerId) {
+            await ensureTables(env);
+            const size = Number(request.headers.get("content-length") || bytes.byteLength);
+            await env.DB.prepare(
+              `INSERT INTO storage_quotas (customer_id, used_bytes, updated_at_ms) VALUES (?, ?, ?)
              ON CONFLICT(customer_id) DO UPDATE SET used_bytes = used_bytes + excluded.used_bytes, updated_at_ms = excluded.updated_at_ms`,
-          )
-            .bind(parsed.customerId, size, Date.now())
-            .run();
+            )
+              .bind(parsed.customerId, Number.isFinite(size) ? size : bytes.byteLength, Date.now())
+              .run();
+          }
+        } catch (error) {
+          console.error("storage quota tracking failed", error);
         }
         return cors({ ok: true, key });
       }
@@ -323,17 +339,40 @@ export default {
           const viewAuth = await verifyFirebaseToken(request, env);
           if (!viewAuth) return cors({ error: "unauthorized" }, 401);
         }
-        const obj = await env.MEDIA_BUCKET.get(key);
+        const rangeHeader = request.headers.get("range");
+        const obj = rangeHeader && request.method === "GET"
+          ? await env.MEDIA_BUCKET.get(key, { range: request.headers })
+          : request.method === "HEAD"
+            ? await env.MEDIA_BUCKET.head(key)
+            : await env.MEDIA_BUCKET.get(key);
         if (!obj) return cors({ error: "not found" }, 404);
         const headers = new Headers();
         headers.set("access-control-allow-origin", "*");
+        headers.set("access-control-allow-headers", "content-type,authorization,range");
+        headers.set("access-control-expose-headers", "content-length,content-range,accept-ranges,content-type");
+        headers.set("accept-ranges", "bytes");
         headers.set("cache-control", "public, max-age=3600");
-        if (obj.httpMetadata?.contentType) headers.set("content-type", obj.httpMetadata.contentType);
-        if (request.method === "HEAD") return new Response(null, { headers });
-        return new Response(obj.body, { headers });
+        const typed = "httpMetadata" in obj ? obj.httpMetadata?.contentType : undefined;
+        if (typed) headers.set("content-type", typed);
+        else if (key.endsWith(".m4a") || key.includes("voice")) headers.set("content-type", "audio/mp4");
+        else if (key.endsWith(".mp4") || key.includes("video")) headers.set("content-type", "video/mp4");
+        if (request.method === "HEAD") {
+          headers.set("content-length", String(obj.size));
+          return new Response(null, { headers });
+        }
+        const bodyObj = obj as R2ObjectBody;
+        const ranged = Boolean(rangeHeader && bodyObj.range);
+        if (ranged && "offset" in (bodyObj.range ?? {})) {
+          const range = bodyObj.range as { offset: number; length: number };
+          const end = range.offset + range.length - 1;
+          headers.set("content-range", `bytes ${range.offset}-${end}/${obj.size}`);
+          headers.set("content-length", String(range.length));
+        } else {
+          headers.set("content-length", String(obj.size));
+        }
+        return new Response(bodyObj.body, { status: ranged ? 206 : 200, headers });
       }
     }
 
     return cors({ error: "not found" }, 404);
-  },
-};
+}
