@@ -119,10 +119,74 @@ async function probeFirebase(env: Env): Promise<{ status: Status; message: strin
   }
 }
 
+function b64url(part: string): Uint8Array {
+  const pad = "=".repeat((4 - (part.length % 4)) % 4);
+  const raw = atob(`${part}${pad}`.replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+type FirebaseJwt = { kid?: string; alg?: string; iss?: string; aud?: string; exp?: number; sub?: string; email?: string };
+
+let jwksCache: { atMs: number; keys: Array<JsonWebKey & { kid?: string }> } | null = null;
+
+async function firebaseJwks(): Promise<Array<JsonWebKey & { kid?: string }>> {
+  if (jwksCache && Date.now() - jwksCache.atMs < 50 * 60 * 1000) return jwksCache.keys;
+  const res = await fetch("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com");
+  if (!res.ok) throw new Error(`jwks HTTP ${res.status}`);
+  const json = (await res.json()) as { keys?: Array<JsonWebKey & { kid?: string }> };
+  const keys = json.keys ?? [];
+  jwksCache = { atMs: Date.now(), keys };
+  return keys;
+}
+
+async function verifyFirebaseJwt(token: string, projectId: string): Promise<{ uid: string; email: string } | null> {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  let header: FirebaseJwt;
+  let payload: FirebaseJwt;
+  try {
+    header = JSON.parse(new TextDecoder().decode(b64url(parts[0]))) as FirebaseJwt;
+    payload = JSON.parse(new TextDecoder().decode(b64url(parts[1]))) as FirebaseJwt;
+  } catch {
+    return null;
+  }
+  if (header.alg !== "RS256" || !header.kid) return null;
+  if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
+  if (payload.aud !== projectId) return null;
+  if (!payload.sub) return null;
+  if ((payload.exp ?? 0) * 1000 < Date.now() - 30_000) return null;
+  const jwk = (await firebaseJwks()).find((key) => key.kid === header.kid);
+  if (!jwk) return null;
+  const cryptoKey = await crypto.subtle.importKey(
+    "jwk",
+    { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: "RS256" },
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const ok = await crypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    b64url(parts[2]),
+    new TextEncoder().encode(`${parts[0]}.${parts[1]}`),
+  );
+  if (!ok) return null;
+  return { uid: payload.sub, email: (payload.email ?? "").trim().toLowerCase() };
+}
+
 async function verifyFirebaseToken(request: Request, env: Env): Promise<{ uid: string; email: string } | null> {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) return null;
+  const projectId = env.FIREBASE_PROJECT_ID?.trim() || "globalnetwork-isp";
+  try {
+    const jwtAuth = await verifyFirebaseJwt(token, projectId);
+    if (jwtAuth) return jwtAuth;
+  } catch {
+    // Fall through to Identity Toolkit if an API key is configured.
+  }
   const apiKey = env.FIREBASE_API_KEY?.trim();
   if (!apiKey) return null;
   const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`, {

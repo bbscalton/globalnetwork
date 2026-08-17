@@ -152,7 +152,7 @@ class GnApi {
     required Uint8List bytes,
     required String contentType,
   }) async {
-    final token = await user?.getIdToken();
+    const token = await user?.getIdToken(true);
     final sign = await http.post(
       Uri.parse('$r2BaseUrl/sign-upload'),
       headers: {
