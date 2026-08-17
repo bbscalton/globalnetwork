@@ -296,3 +296,22 @@ p.fail { padding: 0.7rem 0.85rem; border-radius: 12px; }
 .plan-mix { display: grid; gap: 0.75rem; }
 .plan-mix-row { display: grid; gap: 0.35rem; }
 .cycle-track span.is-off { background: rgba(148, 163, 184, 0.4); }
+
+.search-lg { font-size: 1.02rem; padding: 0.9rem 1rem; }
+.callout-skip {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.08);
+}
+.callout-skip h2 { margin-bottom: 0.35rem; }
+.cap-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
+.cap-legend li { display: grid; gap: 0.15rem; padding-bottom: 0.55rem; border-bottom: 1px solid var(--line); }
+.cap-legend li:last-child { border-bottom: 0; padding-bottom: 0; }
+.device-street { font-family: var(--font-display); font-size: 1.05rem; margin: 0.35rem 0 0.15rem; }
+.cap-list { list-style: none; margin: 0.85rem 0 0; padding: 0; display: grid; gap: 0.55rem; }
+.cap-row {
+  display: flex; justify-content: space-between; gap: 0.7rem; align-items: flex-start;
+  border-bottom: 1px solid var(--line); padding-bottom: 0.5rem;
+}
+.cap-row span:first-child { display: grid; gap: 0.12rem; min-width: 0; }
+.pill.poe { background: rgba(34, 211, 238, 0.16); color: #67e8f9; }
+.device-skip { border-color: rgba(248, 113, 113, 0.35); }

@@ -12,6 +12,8 @@ import { ChatDesk } from './ChatDesk'
 import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
 import { AccountsDesk } from './AccountsDesk'
+import { DevicesDesk } from './DevicesDesk'
+import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
 
 export default function App() {
   const { configured, user, loading, linking, isOwner, deskRole, member, linkError, signIn, signInWithGoogle, signOut, orgId } = useAuth()
@@ -200,6 +202,10 @@ function Shell({
           {pulse.openIssues > 0 && <span className="nav-count hot">{pulse.openIssues}</span>}
         </NavLink>
         <NavLink to="/plans">Plans</NavLink>
+        <NavLink to="/devices">
+          Devices
+          <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
+        </NavLink>
         <NavLink to="/accounts">Account & roles</NavLink>
         <div className="side-pulse">
           <p>
@@ -222,6 +228,7 @@ function Shell({
           <Route path="/chat" element={<ChatDesk customers={customers} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
           <Route path="/plans" element={<PlansDesk plans={plans} customers={customers} now={now} />} />
+          <Route path="/devices" element={<DevicesDesk />} />
           <Route path="/accounts" element={<AccountsDesk />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
