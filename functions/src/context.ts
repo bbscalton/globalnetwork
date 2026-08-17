@@ -1,4 +1,5 @@
 import { getApp, getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { logger } from "firebase-functions";
@@ -30,16 +31,34 @@ export function requireAuth(request: CallableRequest): { uid: string; email: str
   return { uid, email };
 }
 
-export function isOwnerEmail(email: string | undefined | null): boolean {
+export function isFounderEmail(email: string | undefined | null): boolean {
   return (email ?? "").trim().toLowerCase() === ADMIN_EMAIL;
+}
+
+export function isOwnerEmail(email: string | undefined | null): boolean {
+  return isFounderEmail(email);
+}
+
+export async function setOwnerClaim(uid: string, owner: boolean): Promise<void> {
+  try {
+    await getAuth(firebaseApp()).setCustomUserClaims(uid, owner ? { owner: true } : { owner: false });
+  } catch (error) {
+    logger.warn("setOwnerClaim failed", { uid, error });
+  }
+}
+
+export async function memberIsOwner(uid: string): Promise<boolean> {
+  const snap = await db.collection("deskMembers").doc(uid).get();
+  return snap.exists && String(snap.get("role") ?? "") === "owner";
 }
 
 export async function requireOwner(request: CallableRequest): Promise<{ uid: string; email: string }> {
   const user = requireAuth(request);
-  if (!isOwnerEmail(user.email)) {
-    throw new HttpsError("permission-denied", "Owner access required.");
-  }
-  return user;
+  if (isFounderEmail(user.email)) return user;
+  const claim = (request.auth?.token as Record<string, unknown> | undefined)?.owner;
+  if (claim === true) return user;
+  if (await memberIsOwner(user.uid)) return user;
+  throw new HttpsError("permission-denied", "Owner access required. Ask an approved owner to grant your desk role.");
 }
 
 export async function writeAudit(entry: {
@@ -68,9 +87,26 @@ export async function sendToToken(token: string | undefined, title: string, body
 }
 
 export async function ownerFcmToken(orgId = DEFAULT_ORG_ID): Promise<string | undefined> {
-  const snap = await db.collection("orgs").doc(orgId).get();
-  const token = snap.get("ownerFcmToken");
-  return typeof token === "string" && token ? token : undefined;
+  const tokens = await ownerFcmTokens(orgId);
+  return tokens[0];
+}
+
+export async function ownerFcmTokens(orgId = DEFAULT_ORG_ID): Promise<string[]> {
+  const tokens = new Set<string>();
+  const members = await db.collection("deskMembers").where("role", "==", "owner").get();
+  for (const doc of members.docs) {
+    const token = doc.get("fcmToken");
+    if (typeof token === "string" && token) tokens.add(token);
+  }
+  const org = await db.collection("orgs").doc(orgId).get();
+  const fallback = org.get("ownerFcmToken");
+  if (typeof fallback === "string" && fallback) tokens.add(fallback);
+  return [...tokens];
+}
+
+export async function sendToOwners(title: string, body: string, data: Record<string, string>): Promise<void> {
+  const tokens = await ownerFcmTokens();
+  await Promise.all(tokens.map((token) => sendToToken(token, title, body, data)));
 }
 
 export const DEFAULT_PLANS = [

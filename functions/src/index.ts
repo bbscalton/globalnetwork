@@ -10,5 +10,6 @@ export {
   submitCustomerApplication,
   reviewCustomerApplication,
 } from "./subscriptions";
+export { linkDeskAccount, inviteDeskOwner, reviewDeskMember, removeDeskOwner, revokeDeskInvite } from "./desk";
 export { expireSubscriptions, onChatCreated, onIssueCreated } from "./notify";
 export { platformHealth, adminSendTestFcm, adminGetStorageDump } from "./health";

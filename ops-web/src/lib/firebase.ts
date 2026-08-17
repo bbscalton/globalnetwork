@@ -58,6 +58,8 @@ export const COL = {
   orgs: 'orgs',
   adminConfig: 'adminConfig',
   adminAuditLogs: 'adminAuditLogs',
+  deskMembers: 'deskMembers',
+  deskInvites: 'deskInvites',
 } as const
 
 export const ONLINE_AFTER_MS = 15 * 60 * 1000

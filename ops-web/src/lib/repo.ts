@@ -12,7 +12,7 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { COL, db, functions } from './firebase'
 import { ORG_ID } from './admin'
-import type { ChatMessage, Customer, CustomerStatus, IssueTicket, Payment, Plan } from './types'
+import type { ChatMessage, Customer, CustomerStatus, DeskInvite, DeskMember, DeskRole, IssueTicket, Payment, Plan } from './types'
 
 function requireDb() {
   if (!db) throw new Error('Firestore is not configured.')
@@ -101,7 +101,9 @@ export function observeChat(customerId: string, onData: (rows: ChatMessage[]) =>
           id: d.id,
           from: isOwnerSender(fromRaw) ? 'owner' : 'customer',
           text: String(data.text ?? ''),
+          kind: String(data.kind ?? 'text'),
           mediaUrl: data.mediaUrl == null ? null : String(data.mediaUrl),
+          durationMs: Number(data.durationMs ?? 0),
           createdAtMs: Number(data.createdAtMs ?? 0),
         }
       }),
@@ -168,6 +170,7 @@ export async function sendChat(customerId: string, text: string, from: 'owner' |
   await addDoc(collection(database, COL.customers, customerId, COL.chatMessages), {
     from,
     text,
+    kind: 'text',
     createdAtMs: Date.now(),
   })
 }
@@ -235,6 +238,77 @@ export async function ensureOrgDefaults(): Promise<void> {
 
 export async function registerOwnerDevice(fcmToken?: string): Promise<void> {
   await callable('registerOwnerDevice', { orgId: ORG_ID, fcmToken: fcmToken ?? '' })
+}
+
+export async function linkDeskAccount(): Promise<{ role: DeskRole; email: string; name?: string; reason?: string }> {
+  return callable('linkDeskAccount', {})
+}
+
+export async function inviteDeskOwner(email: string, name = ''): Promise<void> {
+  await callable('inviteDeskOwner', { email, name })
+}
+
+export async function reviewDeskMember(uid: string, decision: 'approved' | 'rejected', reason = ''): Promise<void> {
+  await callable('reviewDeskMember', { uid, decision, reason })
+}
+
+export async function removeDeskOwner(uid: string): Promise<void> {
+  await callable('removeDeskOwner', { uid })
+}
+
+export async function revokeDeskInvite(email: string): Promise<void> {
+  await callable('revokeDeskInvite', { email })
+}
+
+function asMember(id: string, data: Record<string, unknown>): DeskMember {
+  const roleRaw = String(data.role ?? 'pending')
+  const role: DeskRole = roleRaw === 'owner' || roleRaw === 'rejected' ? roleRaw : 'pending'
+  return {
+    id,
+    uid: String(data.uid ?? id),
+    email: String(data.email ?? ''),
+    name: String(data.name ?? ''),
+    role,
+    isPrimary: data.isPrimary === true,
+    rejectedReason: String(data.rejectedReason ?? ''),
+    requestedAtMs: Number(data.requestedAtMs ?? 0),
+    approvedAtMs: Number(data.approvedAtMs ?? 0),
+    lastSeenMs: Number(data.lastSeenMs ?? 0),
+  }
+}
+
+export function observeDeskMember(uid: string, onData: (row: DeskMember | null) => void): Unsubscribe {
+  const database = requireDb()
+  return onSnapshot(doc(database, COL.deskMembers, uid), (snap) => {
+    onData(snap.exists() ? asMember(snap.id, snap.data() as Record<string, unknown>) : null)
+  })
+}
+
+export function observeDeskMembers(onData: (rows: DeskMember[]) => void): Unsubscribe {
+  const database = requireDb()
+  return onSnapshot(collection(database, COL.deskMembers), (snap) => {
+    onData(snap.docs.map((d) => asMember(d.id, d.data() as Record<string, unknown>)))
+  })
+}
+
+export function observeDeskInvites(onData: (rows: DeskInvite[]) => void): Unsubscribe {
+  const database = requireDb()
+  return onSnapshot(collection(database, COL.deskInvites), (snap) => {
+    onData(
+      snap.docs.map((d) => {
+        const data = d.data()
+        return {
+          id: d.id,
+          email: String(data.email ?? d.id),
+          name: String(data.name ?? ''),
+          role: String(data.role ?? 'owner'),
+          status: String(data.status ?? 'open'),
+          invitedBy: String(data.invitedBy ?? ''),
+          invitedAtMs: Number(data.invitedAtMs ?? 0),
+        }
+      }),
+    )
+  })
 }
 
 export function formatEc(amount: number): string {

@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, ownerFcmToken, requireOwner, sendToToken, writeAudit } from "./context";
+import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireOwner, sendToOwners, sendToToken, writeAudit } from "./context";
 
 export const ensureOrgDefaults = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
@@ -46,6 +46,15 @@ export const registerOwnerDevice = onCall(CALLABLE, async (request) => {
       ownerUid: owner.uid,
       ownerFcmToken: token || null,
       ownerLastSeenMs: Date.now(),
+    },
+    { merge: true },
+  );
+  await db.collection("deskMembers").doc(owner.uid).set(
+    {
+      uid: owner.uid,
+      email: owner.email,
+      fcmToken: token || null,
+      lastSeenMs: Date.now(),
     },
     { merge: true },
   );
@@ -269,43 +278,47 @@ export const heartbeat = onCall(CALLABLE, async (request) => {
 });
 
 export const submitCustomerApplication = onCall(CALLABLE, async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
-  const customerId = String(request.data?.customerId ?? "").trim();
-  const name = String(request.data?.name ?? "").trim();
-  const phone = String(request.data?.phone ?? "").trim();
-  const address = String(request.data?.address ?? "").trim();
-  const idPhotoUrl = String(request.data?.idPhotoUrl ?? "").trim();
-  const billingPhotoUrl = String(request.data?.billingPhotoUrl ?? "").trim();
-  if (!customerId || !name || !phone || !address || !idPhotoUrl || !billingPhotoUrl) {
-    throw new HttpsError("invalid-argument", "Name, phone, address, ID photo, and billing-address photo are required.");
+  try {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+    const customerId = String(request.data?.customerId ?? "").trim();
+    const name = String(request.data?.name ?? "").trim();
+    const phone = String(request.data?.phone ?? "").trim();
+    const address = String(request.data?.address ?? "").trim();
+    const idPhotoUrl = String(request.data?.idPhotoUrl ?? "").trim();
+    const billingPhotoUrl = String(request.data?.billingPhotoUrl ?? "").trim();
+    if (!customerId || !name || !phone || !address || !idPhotoUrl || !billingPhotoUrl) {
+      throw new HttpsError("invalid-argument", "Name, phone, address, ID photo, and billing-address photo are required.");
+    }
+    const ref = db.collection("customers").doc(customerId);
+    const snap = await ref.get();
+    if (!snap.exists || snap.get("uid") !== uid) {
+      throw new HttpsError("permission-denied", "Not your customer record.");
+    }
+    if (String(snap.get("approvalStatus") ?? "") === "approved") {
+      throw new HttpsError("failed-precondition", "This account is already approved.");
+    }
+    await ref.update({
+      name,
+      phone,
+      address,
+      idPhotoUrl,
+      billingPhotoUrl,
+      approvalStatus: "pending",
+      kycSubmittedAtMs: Date.now(),
+      rejectionReason: "",
+      lastSeenMs: Date.now(),
+    });
+    await sendToOwners("New GlobalNetwork application", `${name} submitted ID and billing photos for approval.`, {
+      type: "application",
+      customerId,
+    });
+    return { ok: true, customerId };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    logger.error("submitCustomerApplication failed", error);
+    throw new HttpsError("unavailable", "Could not send your application. Try again.");
   }
-  const ref = db.collection("customers").doc(customerId);
-  const snap = await ref.get();
-  if (!snap.exists || snap.get("uid") !== uid) {
-    throw new HttpsError("permission-denied", "Not your customer record.");
-  }
-  if (String(snap.get("approvalStatus") ?? "") === "approved") {
-    throw new HttpsError("failed-precondition", "This account is already approved.");
-  }
-  await ref.update({
-    name,
-    phone,
-    address,
-    idPhotoUrl,
-    billingPhotoUrl,
-    approvalStatus: "pending",
-    kycSubmittedAtMs: Date.now(),
-    rejectionReason: FieldValue.delete(),
-    lastSeenMs: Date.now(),
-  });
-  await sendToToken(
-    await ownerFcmToken(),
-    "New GlobalNetwork application",
-    `${name} submitted ID and billing photos for approval.`,
-    { type: "application", customerId },
-  );
-  return { ok: true, customerId };
 });
 
 export const reviewCustomerApplication = onCall(CALLABLE, async (request) => {

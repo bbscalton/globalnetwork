@@ -4,8 +4,15 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
-    function isOwner() {
+    function isFounder() {
       return signedIn() && request.auth.token.email == 'neuereatec@gmail.com';
+    }
+    function isOwner() {
+      return isFounder()
+        || (signedIn() && request.auth.token.owner == true)
+        || (signedIn()
+          && exists(/databases/$(database)/documents/deskMembers/$(request.auth.uid))
+          && get(/databases/$(database)/documents/deskMembers/$(request.auth.uid)).data.role == 'owner');
     }
     function customerOwns(customerId) {
       return signedIn() && (
@@ -20,6 +27,16 @@ service cloud.firestore {
 
     match /staffProfiles/{uid} {
       allow read, write: if false;
+    }
+
+    match /deskMembers/{uid} {
+      allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
+    }
+
+    match /deskInvites/{email} {
+      allow read: if isOwner();
+      allow write: if false;
     }
 
     match /orgs/{orgId} {

@@ -1,7 +1,7 @@
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
-import { db, ownerFcmToken, sendToToken } from "./context";
+import { db, sendToOwners, sendToToken } from "./context";
 
 function fromOwner(from: string): boolean {
   return from === "owner" || from === "staff";
@@ -56,12 +56,10 @@ export const onChatCreated = onDocumentCreated(
       await customer.ref.update({
         unreadStaff: (Number(customer.get("unreadStaff") ?? 0) || 0) + 1,
       });
-      await sendToToken(
-        await ownerFcmToken(),
-        String(customer.get("name") ?? "Customer"),
-        text || "Customer message",
-        { type: "chat", customerId },
-      );
+      await sendToOwners(String(customer.get("name") ?? "Customer"), text || "Customer message", {
+        type: "chat",
+        customerId,
+      });
     }
   },
 );
@@ -72,7 +70,7 @@ export const onIssueCreated = onDocumentCreated("customers/{customerId}/issues/{
   if (!data) return;
   const customer = await db.collection("customers").doc(customerId).get();
   const title = `${customer.get("name") ?? "Customer"}: ${String(data.title ?? "Issue reported")}`;
-  await sendToToken(await ownerFcmToken(), "New line issue", title, {
+  await sendToOwners("New line issue", title, {
     type: "issue",
     customerId,
   });

@@ -11,9 +11,10 @@ import { CustomerPage } from './CustomerPage'
 import { ChatDesk } from './ChatDesk'
 import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
+import { AccountsDesk } from './AccountsDesk'
 
 export default function App() {
-  const { configured, user, loading, isOwner, signIn, signInWithGoogle, signOut, orgId } = useAuth()
+  const { configured, user, loading, linking, isOwner, deskRole, member, linkError, signIn, signInWithGoogle, signOut, orgId } = useAuth()
   if (!configured) {
     return (
       <div className="auth">
@@ -26,24 +27,65 @@ export default function App() {
   }
   if (loading) return <div className="auth">Opening owner desk…</div>
   if (!user) return <Login signIn={signIn} signInWithGoogle={signInWithGoogle} />
-  if (!isOwner) {
+  if (linking && !isOwner) {
+    return <div className="auth">Checking your desk role…</div>
+  }
+  if (isOwner) {
+    return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} />
+  }
+  if (deskRole === 'pending') {
     return (
-      <div className="auth">
-        <div className="auth-card">
-          <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={56} height={56} className="auth-logo" />
-          <h1>Owner only</h1>
-          <p className="muted">
-            Signed in as {user.email}. The GlobalNetwork desk is for the owner account. Customers use the
-            iOS and Android app.
-          </p>
-          <button className="btn btn-ghost" type="button" onClick={() => void signOut()}>
-            Sign out
-          </button>
-        </div>
-      </div>
+      <AccessGate
+        title="Waiting for owner approval"
+        body={`${user.email} signed in with Google. This is not the customer app. An approved owner must grant you a desk role before you can manage subscriptions.`}
+        extra={member?.name ? `Signed in as ${member.name}.` : null}
+        onSignOut={signOut}
+      />
     )
   }
-  return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} />
+  if (deskRole === 'rejected') {
+    return (
+      <AccessGate
+        title="Desk access was not approved"
+        body={member?.rejectedReason || linkError || 'An owner turned down this Google account for the GlobalNetwork desk. Customers use the iOS and Android app.'}
+        onSignOut={signOut}
+      />
+    )
+  }
+  return (
+    <AccessGate
+      title="Owner approval required"
+      body={linkError || `Signed in as ${user.email}. Google sign-in on the owner desk needs approval. Ask an existing owner to assign your role.`}
+      onSignOut={signOut}
+    />
+  )
+}
+
+function AccessGate({
+  title,
+  body,
+  extra,
+  onSignOut,
+}: {
+  title: string
+  body: string
+  extra?: string | null
+  onSignOut: () => Promise<void>
+}) {
+  return (
+    <div className="auth">
+      <div className="auth-card">
+        <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={56} height={56} className="auth-logo" />
+        <p className="eyebrow">GlobalNetwork desk</p>
+        <h1>{title}</h1>
+        <p className="muted">{body}</p>
+        {extra && <p className="muted tiny">{extra}</p>}
+        <button className="btn btn-ghost" type="button" onClick={() => void onSignOut()}>
+          Sign out
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function Login({
@@ -86,7 +128,7 @@ function Login({
         <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="GlobalNetwork" width={72} height={72} className="auth-logo gn-spin" />
         <p className="eyebrow">GlobalNetwork</p>
         <h1>Owner desk</h1>
-        <p className="muted">Sign in to manage customer internet subscriptions, grant days, and chat.</p>
+        <p className="muted">Antigua owner desk. Google sign-in still needs an approved owner role.</p>
         <input type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="password" required minLength={6} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p className="fail">{error}</p>}
@@ -96,7 +138,7 @@ function Login({
         <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void onGoogle()}>
           {busy ? 'Opening Google…' : 'Continue with Google'}
         </button>
-        <p className="muted tiny">Owner: neuereatec@gmail.com · Allow popups for Google.</p>
+        <p className="muted tiny">Founding owner: neuereatec@gmail.com · Other Google accounts wait for approval.</p>
       </form>
     </div>
   )
@@ -158,6 +200,7 @@ function Shell({
           {pulse.openIssues > 0 && <span className="nav-count hot">{pulse.openIssues}</span>}
         </NavLink>
         <NavLink to="/plans">Plans</NavLink>
+        <NavLink to="/accounts">Account & roles</NavLink>
         <div className="side-pulse">
           <p>
             <b className="live-num">{pulse.active}</b> live
@@ -179,6 +222,7 @@ function Shell({
           <Route path="/chat" element={<ChatDesk customers={customers} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
           <Route path="/plans" element={<PlansDesk plans={plans} customers={customers} now={now} />} />
+          <Route path="/accounts" element={<AccountsDesk />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
