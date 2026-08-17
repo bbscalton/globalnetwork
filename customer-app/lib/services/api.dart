@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/customer.dart';
@@ -16,6 +17,10 @@ class GnApi {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+  final _google = GoogleSignIn(
+    scopes: const ['email', 'profile'],
+    serverClientId: '367351875740-matj6sj8li188ool3fi0lra6h58ne2ht.apps.googleusercontent.com',
+  );
 
   User? get user => _auth.currentUser;
 
@@ -29,7 +34,28 @@ class GnApi {
     await _auth.createUserWithEmailAndPassword(email: email, password: password);
   }
 
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signInWithGoogle() async {
+    final account = await _google.signIn();
+    if (account == null) {
+      throw Exception('Google sign-in was cancelled.');
+    }
+    final tokens = await account.authentication;
+    final idToken = tokens.idToken;
+    if (idToken == null || idToken.isEmpty) {
+      await _google.signOut();
+      throw Exception('Google did not return an ID token. Try again.');
+    }
+    await _auth.signInWithCredential(
+      GoogleAuthProvider.credential(idToken: idToken, accessToken: tokens.accessToken),
+    );
+  }
+
+  Future<void> signOut() async {
+    try {
+      await _google.signOut();
+    } catch (_) {}
+    await _auth.signOut();
+  }
 
   Future<String> linkAccount() async {
     final callable = _functions.httpsCallable('linkCustomerAccount');

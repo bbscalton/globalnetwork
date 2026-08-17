@@ -177,7 +177,10 @@ export async function updateCustomerContact(
   patch: { name?: string; phone?: string; email?: string; address?: string; planId?: string; planName?: string; planDays?: number; feeAmount?: number },
 ): Promise<void> {
   const database = requireDb()
-  await updateDoc(doc(database, COL.customers, customerId), patch)
+  await updateDoc(doc(database, COL.customers, customerId), {
+    ...patch,
+    ...(patch.email != null ? { email: patch.email.trim().toLowerCase() } : {}),
+  })
 }
 
 async function callable<Req extends object, Res>(name: string, data: Req): Promise<Res> {

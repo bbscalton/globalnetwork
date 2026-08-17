@@ -225,6 +225,18 @@ export function CustomerPage({
             />
           </label>
           <label>
+            Email / Google account
+            <input
+              type="email"
+              defaultValue={customer.email}
+              key={`${customer.id}-email`}
+              onBlur={(e) => {
+                const next = e.target.value.trim().toLowerCase()
+                if (next !== customer.email) void repo.updateCustomerContact(customer.id, { email: next })
+              }}
+            />
+          </label>
+          <label>
             Phone
             <input
               defaultValue={customer.phone}

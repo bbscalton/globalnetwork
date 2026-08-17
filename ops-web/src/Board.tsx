@@ -172,7 +172,7 @@ export function Board({
           <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={(e) => void onCreate(e)}>
             <p className="eyebrow">Onboard</p>
             <h2>New customer</h2>
-            <p className="muted">They start expired until you grant days on their record. Assign a selling plan now.</p>
+            <p className="muted">They start expired until you grant days on their record. Put their Gmail so they can sign in with Google on the Android app.</p>
             <label>
               Name
               <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -182,8 +182,13 @@ export function Board({
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </label>
             <label>
-              Email
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              Email (Gmail they will use in the app)
+              <input
+                required
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+              />
             </label>
             <label>
               Address / site
@@ -205,7 +210,7 @@ export function Board({
               <button className="btn btn-ghost" type="button" onClick={() => setCreating(false)}>
                 Cancel
               </button>
-              <button className="btn btn-primary" type="submit" disabled={busy || !form.name.trim()}>
+              <button className="btn btn-primary" type="submit" disabled={busy || !form.name.trim() || !form.email.trim()}>
                 {busy ? 'Creating…' : 'Create record'}
               </button>
             </div>
