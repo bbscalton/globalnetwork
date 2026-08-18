@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Customer, Plan } from './lib/types'
-import { daysLeft, ensureOrgDefaults, formatEc, savePlan } from './lib/repo'
+import { daysLeft, deletePlan, ensureOrgDefaults, formatEc, savePlan } from './lib/repo'
 
 type PlanDraft = { name: string; days: string; feeAmount: string }
 
@@ -8,10 +8,12 @@ export function PlansDesk({
   plans,
   customers,
   now,
+  renewalWarnDays = 3,
 }: {
   plans: Plan[]
   customers: Customer[]
   now: number
+  renewalWarnDays?: number
 }) {
   const [name, setName] = useState('30-day home')
   const [days, setDays] = useState('30')
@@ -30,7 +32,7 @@ export function PlansDesk({
         const live = members.filter((c) => c.status === 'active' || c.status === 'grace')
         const dueSoon = members.filter((c) => {
           const left = daysLeft(c.paidUntilMs, now)
-          return left > 0 && left <= 3
+          return left > 0 && left <= renewalWarnDays
         })
         const owed = members.reduce((sum, c) => sum + (c.balanceDue || 0), 0)
         const booked = live.length * plan.feeAmount
@@ -45,7 +47,7 @@ export function PlansDesk({
           daily: plan.days > 0 ? Math.round(plan.feeAmount / plan.days) : 0,
         }
       })
-  }, [plans, customers, now])
+  }, [plans, customers, now, renewalWarnDays])
 
   const kpis = useMemo(() => {
     const livePlans = mix.filter((row) => row.plan.active)
@@ -221,7 +223,7 @@ export function PlansDesk({
                 </li>
                 <li>
                   <span>
-                    <strong>{row.dueSoon}</strong> due in 3 days
+                    <strong>{row.dueSoon}</strong> due in {renewalWarnDays} days
                   </span>
                 </li>
                 <li>
@@ -280,6 +282,35 @@ export function PlansDesk({
                     Edit price / days
                   </button>
                 )}
+                <button
+                  className="btn btn-ghost danger"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    const assigned = row.members.length
+                    if (assigned > 0) {
+                      if (
+                        !window.confirm(
+                          `${row.plan.name} is assigned to ${assigned} customer${assigned === 1 ? '' : 's'}. Unassign them and delete this plan?`,
+                        )
+                      ) {
+                        return
+                      }
+                      void run(async () => {
+                        await deletePlan(row.plan.id, true)
+                        return `Deleted ${row.plan.name} and unassigned ${assigned} customer${assigned === 1 ? '' : 's'}.`
+                      })
+                      return
+                    }
+                    if (!window.confirm(`Delete ${row.plan.name}?`)) return
+                    void run(async () => {
+                      await deletePlan(row.plan.id, false)
+                      return `Deleted ${row.plan.name}.`
+                    })
+                  }}
+                >
+                  Delete
+                </button>
                 <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void save({ ...row.plan, active: !row.plan.active })}>
                   {row.plan.active ? 'Stop selling' : 'Start selling'}
                 </button>

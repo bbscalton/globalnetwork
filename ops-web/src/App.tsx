@@ -5,7 +5,8 @@ import { consumeGoogleAuthError, googleAuthErrorMessage } from './lib/googleAuth
 import * as repo from './lib/repo'
 import { ONLINE_AFTER_MS } from './lib/firebase'
 import { deskPulse } from './lib/desk'
-import type { Customer, IssueTicket, Plan } from './lib/types'
+import type { Customer, IssueTicket, OrgSettings, Plan } from './lib/types'
+import { DEFAULT_ORG_SETTINGS } from './lib/types'
 import { Board } from './Board'
 import { CustomerPage } from './CustomerPage'
 import { ChatDesk } from './ChatDesk'
@@ -15,6 +16,7 @@ import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
 import { AccountsDesk } from './AccountsDesk'
 import { DevicesDesk } from './DevicesDesk'
+import { SettingsDesk } from './SettingsDesk'
 import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
 import { customerPin } from './lib/geo'
 
@@ -161,8 +163,11 @@ function Shell({
   const [customers, setCustomers] = useState<Customer[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [issues, setIssues] = useState<IssueTicket[]>([])
+  const [org, setOrg] = useState<OrgSettings | null>(null)
   const [now, setNow] = useState(Date.now())
   const [error, setError] = useState<string | null>(null)
+  const warnDays = org?.renewalWarnDays ?? DEFAULT_ORG_SETTINGS.renewalWarnDays
+  const botEnabled = org?.botEnabled !== false
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 15000)
@@ -173,14 +178,19 @@ function Shell({
     const u1 = repo.observeCustomers(orgId, setCustomers, (e) => setError(e.message))
     const u2 = repo.observePlans(setPlans)
     const u3 = repo.observeIssues(setIssues)
+    const u4 = repo.observeOrg(orgId, setOrg)
     return () => {
       u1()
       u2()
       u3()
+      u4()
     }
   }, [orgId])
 
-  const pulse = useMemo(() => deskPulse(customers, issues, now, ONLINE_AFTER_MS), [customers, issues, now])
+  const pulse = useMemo(
+    () => deskPulse(customers, issues, now, ONLINE_AFTER_MS, warnDays),
+    [customers, issues, now, warnDays],
+  )
 
   return (
     <div className="shell">
@@ -192,6 +202,16 @@ function Shell({
             <div className="muted tiny">Owner desk</div>
           </div>
         </div>
+        <nav className="nav-owner" aria-label="Account and settings">
+          <p className="nav-label">Account &amp; settings</p>
+          <NavLink to="/accounts">Account &amp; roles</NavLink>
+          <NavLink to="/settings" className="nav-settings">
+            Settings
+            <span className="nav-gear" aria-hidden>
+              ⚙
+            </span>
+          </NavLink>
+        </nav>
         <NavLink to="/" end>
           Roster
           <span className="nav-count">{pulse.total}</span>
@@ -217,7 +237,6 @@ function Shell({
           Devices
           <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
         </NavLink>
-        <NavLink to="/accounts">Account & roles</NavLink>
         <div className="side-pulse">
           <p>
             <b className="live-num">{pulse.active}</b> live
@@ -235,14 +254,21 @@ function Shell({
         <CallOverlay customers={customers} />
         {error && <p className="fail">{error}</p>}
         <Routes>
-          <Route path="/" element={<Board customers={customers} plans={plans} issues={issues} now={now} />} />
+          <Route
+            path="/"
+            element={<Board customers={customers} plans={plans} issues={issues} now={now} renewalWarnDays={warnDays} />}
+          />
           <Route path="/c/:id" element={<CustomerPage customers={customers} plans={plans} issues={issues} now={now} />} />
-          <Route path="/chat" element={<ChatDesk customers={customers} issues={issues} />} />
+          <Route path="/chat" element={<ChatDesk customers={customers} issues={issues} botEnabled={botEnabled} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
           <Route path="/field" element={<FieldMap customers={customers} issues={issues} />} />
-          <Route path="/plans" element={<PlansDesk plans={plans} customers={customers} now={now} />} />
+          <Route
+            path="/plans"
+            element={<PlansDesk plans={plans} customers={customers} now={now} renewalWarnDays={warnDays} />}
+          />
           <Route path="/devices" element={<DevicesDesk />} />
           <Route path="/accounts" element={<AccountsDesk />} />
+          <Route path="/settings" element={<SettingsDesk org={org} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

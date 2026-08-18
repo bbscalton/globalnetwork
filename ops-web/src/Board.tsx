@@ -12,14 +12,19 @@ export function Board({
   plans,
   issues,
   now,
+  renewalWarnDays = 3,
 }: {
   customers: Customer[]
   plans: Plan[]
   issues: IssueTicket[]
   now: number
+  renewalWarnDays?: number
 }) {
   const navigate = useNavigate()
-  const pulse = useMemo(() => deskPulse(customers, issues, now, ONLINE_AFTER_MS), [customers, issues, now])
+  const pulse = useMemo(
+    () => deskPulse(customers, issues, now, ONLINE_AFTER_MS, renewalWarnDays),
+    [customers, issues, now, renewalWarnDays],
+  )
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [creating, setCreating] = useState(false)
@@ -32,7 +37,7 @@ export function Board({
     return customers.filter((c) => {
       if (filter === 'due') {
         const left = repo.daysLeft(c.paidUntilMs, now)
-        if (!(left > 0 && left <= 3)) return false
+        if (!(left > 0 && left <= renewalWarnDays)) return false
       } else if (filter === 'owed') {
         if (!((c.balanceDue || 0) > 0 || c.status === 'grace')) return false
       } else if (filter === 'pending') {
@@ -43,7 +48,7 @@ export function Board({
       if (!term) return true
       return `${c.name} ${c.phone} ${c.email} ${c.planName} ${c.address}`.toLowerCase().includes(term)
     })
-  }, [customers, q, filter, now])
+  }, [customers, q, filter, now, renewalWarnDays])
 
   const onCreate = async (e: FormEvent) => {
     e.preventDefault()
@@ -83,7 +88,7 @@ export function Board({
           <span className="muted">{pulse.applications[0]?.name ?? 'No applications waiting'}</span>
         </button>
         <button className="queue-card gn-glow" type="button" onClick={() => setFilter('due')}>
-          <span className="queue-label">Renewals · 3 days</span>
+          <span className="queue-label">Renewals · {renewalWarnDays} days</span>
           <strong className="count-pop">{pulse.dueSoon.length}</strong>
           <span className="muted">{pulse.dueSoon[0]?.name ?? 'Nobody due yet'}</span>
         </button>

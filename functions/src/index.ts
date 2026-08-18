@@ -13,3 +13,17 @@ export {
 export { linkDeskAccount, inviteDeskOwner, reviewDeskMember, removeDeskOwner, revokeDeskInvite } from "./desk";
 export { expireSubscriptions, onChatCreated, onIssueCreated, onVoiceCallWritten } from "./notify";
 export { platformHealth, adminSendTestFcm, adminGetStorageDump } from "./health";
+export {
+  saveOrgSettings,
+  adjustSubscription,
+  unsuspendCustomer,
+  deletePlan,
+  deleteCustomer,
+  clearCustomerChat,
+  deleteChatMessage,
+  updateChatMessage,
+  deleteIssue,
+  updateIssue,
+  deletePayment,
+  factoryReset,
+} from "./adminOps";

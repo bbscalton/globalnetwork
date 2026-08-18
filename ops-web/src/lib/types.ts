@@ -48,7 +48,7 @@ export type Plan = {
 export type Payment = {
   id: string
   amount: number
-  kind: 'full' | 'partial' | 'grace'
+  kind: 'full' | 'partial' | 'grace' | 'adjust'
   daysGranted: number
   note: string
   atMs: number
@@ -63,8 +63,31 @@ export type ChatMessage = {
   mediaUrl?: string | null
   durationMs?: number
   createdAtMs: number
+  editedAtMs?: number
   lat?: number | null
   lng?: number | null
+}
+
+export type OrgSettings = {
+  name: string
+  currency: string
+  supportPhone: string
+  supportWhatsapp: string
+  botEnabled: boolean
+  callRecordingDefault: boolean
+  renewalWarnDays: number
+  timezone: string
+}
+
+export const DEFAULT_ORG_SETTINGS: OrgSettings = {
+  name: 'GlobalNetwork',
+  currency: 'XCD',
+  supportPhone: '',
+  supportWhatsapp: '',
+  botEnabled: true,
+  callRecordingDefault: false,
+  renewalWarnDays: 3,
+  timezone: 'America/Antigua',
 }
 
 export type VoiceCall = {

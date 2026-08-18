@@ -47,11 +47,18 @@ export type DeskPulse = {
   ringing: number
 }
 
-export function deskPulse(customers: Customer[], issues: IssueTicket[], now: number, onlineAfterMs: number): DeskPulse {
+export function deskPulse(
+  customers: Customer[],
+  issues: IssueTicket[],
+  now: number,
+  onlineAfterMs: number,
+  renewalWarnDays = 3,
+): DeskPulse {
+  const warnDays = Math.max(1, renewalWarnDays || 3)
   const dueSoon = customers
     .filter((c) => {
       const left = daysLeft(c.paidUntilMs, now)
-      return left > 0 && left <= 3 && c.status !== 'suspended'
+      return left > 0 && left <= warnDays && c.status !== 'suspended'
     })
     .sort((a, b) => daysLeft(a.paidUntilMs, now) - daysLeft(b.paidUntilMs, now))
   const collections = customers.filter((c) => (c.balanceDue || 0) > 0 || c.status === 'grace')

@@ -13,7 +13,7 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { COL, auth, db, functions } from './firebase'
 import { ORG_ID, R2_BASE } from './admin'
-import type { ChatMessage, Customer, CustomerStatus, DeskInvite, DeskMember, DeskRole, IssueTicket, Payment, Plan, VoiceCall } from './types'
+import { DEFAULT_ORG_SETTINGS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OrgSettings, type Payment, type Plan, type VoiceCall } from './types'
 
 function requireDb() {
   if (!db) throw new Error('Firestore is not configured.')
@@ -77,6 +77,31 @@ export function observeCustomers(orgId: string, onData: (rows: Customer[]) => vo
   )
 }
 
+export function observeOrg(orgId: string, onData: (row: OrgSettings | null) => void, onError?: (e: Error) => void): Unsubscribe {
+  const database = requireDb()
+  return onSnapshot(
+    doc(database, COL.orgs, orgId || ORG_ID),
+    (snap) => {
+      if (!snap.exists()) {
+        onData(null)
+        return
+      }
+      const data = snap.data() as Record<string, unknown>
+      onData({
+        name: String(data.name ?? DEFAULT_ORG_SETTINGS.name),
+        currency: String(data.currency ?? DEFAULT_ORG_SETTINGS.currency),
+        supportPhone: String(data.supportPhone ?? ''),
+        supportWhatsapp: String(data.supportWhatsapp ?? ''),
+        botEnabled: data.botEnabled !== false,
+        callRecordingDefault: data.callRecordingDefault === true,
+        renewalWarnDays: Math.max(1, Math.min(30, Number(data.renewalWarnDays ?? DEFAULT_ORG_SETTINGS.renewalWarnDays) || 3)),
+        timezone: String(data.timezone ?? DEFAULT_ORG_SETTINGS.timezone) || DEFAULT_ORG_SETTINGS.timezone,
+      })
+    },
+    (e) => onError?.(e),
+  )
+}
+
 export function observePlans(onData: (rows: Plan[]) => void, onError?: (e: Error) => void): Unsubscribe {
   const database = requireDb()
   return onSnapshot(
@@ -116,6 +141,7 @@ export function observeChat(customerId: string, onData: (rows: ChatMessage[]) =>
           mediaUrl: data.mediaUrl == null ? null : String(data.mediaUrl),
           durationMs: Number(data.durationMs ?? 0),
           createdAtMs: Number(data.createdAtMs ?? 0),
+          editedAtMs: data.editedAtMs == null ? undefined : Number(data.editedAtMs),
           lat: data.lat == null ? null : Number(data.lat),
           lng: data.lng == null ? null : Number(data.lng),
         }
@@ -134,7 +160,7 @@ export function observePayments(customerId: string, onData: (rows: Payment[]) =>
         return {
           id: d.id,
           amount: Number(data.amount ?? 0),
-          kind: data.kind === 'partial' || data.kind === 'grace' ? data.kind : 'full',
+          kind: data.kind === 'partial' || data.kind === 'grace' || data.kind === 'adjust' ? data.kind : 'full',
           daysGranted: Number(data.daysGranted ?? 0),
           note: String(data.note ?? ''),
           atMs: Number(data.atMs ?? 0),
@@ -269,6 +295,74 @@ export async function suspendCustomer(customerId: string): Promise<void> {
 
 export async function savePlan(plan: Omit<Plan, 'id'> & { id?: string }): Promise<void> {
   await callable('savePlan', plan)
+}
+
+export async function saveOrgSettings(input: Partial<OrgSettings> & { orgId?: string }): Promise<void> {
+  await callable('saveOrgSettings', { ...input, orgId: input.orgId ?? ORG_ID })
+}
+
+export async function adjustSubscription(input: {
+  customerId: string
+  daysRemaining?: number
+  addDays?: number
+  paidUntilMs?: number | null
+  status?: CustomerStatus
+  note?: string
+}): Promise<{ paidUntilMs: number | null; status: CustomerStatus; daysRemaining: number }> {
+  return callable('adjustSubscription', input)
+}
+
+export async function unsuspendCustomer(customerId: string): Promise<{ ok: boolean; status: CustomerStatus }> {
+  return callable('unsuspendCustomer', { customerId })
+}
+
+export async function deletePlan(id: string, force = false): Promise<{ ok: boolean; unassigned: number }> {
+  return callable('deletePlan', { id, force })
+}
+
+export async function deleteCustomer(customerId: string): Promise<void> {
+  await callable('deleteCustomer', { customerId })
+}
+
+export async function clearCustomerChat(customerId: string): Promise<{ deleted: number }> {
+  return callable('clearCustomerChat', { customerId })
+}
+
+export async function deleteChatMessage(customerId: string, messageId: string): Promise<void> {
+  await callable('deleteChatMessage', { customerId, messageId })
+}
+
+export async function updateChatMessage(customerId: string, messageId: string, text: string): Promise<void> {
+  await callable('updateChatMessage', { customerId, messageId, text })
+}
+
+export async function deleteIssue(customerId: string, issueId: string): Promise<void> {
+  await callable('deleteIssue', { customerId, issueId })
+}
+
+export async function updateIssue(
+  customerId: string,
+  issueId: string,
+  patch: { title?: string; body?: string; status?: IssueTicket['status'] },
+): Promise<void> {
+  await callable('updateIssue', { customerId, issueId, ...patch })
+}
+
+export async function deletePayment(customerId: string, paymentId: string): Promise<void> {
+  await callable('deletePayment', { customerId, paymentId })
+}
+
+export type FactoryResetResult = {
+  ok: boolean
+  customersDeleted: number
+  plansDeleted: number
+  auditLogsDeleted: number
+  invitesDeleted: number
+  adminConfigDeleted: number
+}
+
+export async function factoryReset(confirm: string): Promise<FactoryResetResult> {
+  return callable('factoryReset', { confirm, orgId: ORG_ID })
 }
 
 export async function ensureOrgDefaults(): Promise<void> {

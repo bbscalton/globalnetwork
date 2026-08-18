@@ -24,7 +24,15 @@ function previewOf(c: Customer): string {
   return c.planName || 'No plan'
 }
 
-export function ChatDesk({ customers, issues }: { customers: Customer[]; issues: IssueTicket[] }) {
+export function ChatDesk({
+  customers,
+  issues,
+  botEnabled = true,
+}: {
+  customers: Customer[]
+  issues: IssueTicket[]
+  botEnabled?: boolean
+}) {
   const [params, setParams] = useSearchParams()
   const ranked = useMemo(
     () =>
@@ -40,6 +48,11 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
   const [calls, setCalls] = useState<VoiceCall[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  const [editMsgId, setEditMsgId] = useState<string | null>(null)
+  const [editMsgText, setEditMsgText] = useState('')
+  const [editIssueId, setEditIssueId] = useState<string | null>(null)
+  const [editIssueTitle, setEditIssueTitle] = useState('')
+  const [editIssueBody, setEditIssueBody] = useState('')
   const threadRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -55,6 +68,9 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
     if (!selected) return
     const unsubs = [repo.observeChat(selected, setMessages), repo.observeCalls(selected, setCalls)]
     void repo.markChatRead(selected).catch(() => undefined)
+    setEditMsgId(null)
+    setEditIssueId(null)
+    setDraft('')
     return () => unsubs.forEach((unsub) => unsub())
   }, [selected])
 
@@ -183,19 +199,97 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
                 >
                   {agentLive ? 'Return to bot' : 'Take over'}
                 </button>
+                <button
+                  className="btn btn-ghost danger"
+                  type="button"
+                  disabled={busy || messages.length === 0}
+                  onClick={() => {
+                    if (!window.confirm('Clear this entire chat thread?')) return
+                    void (async () => {
+                      setBusy(true)
+                      try {
+                        await repo.clearCustomerChat(current.id)
+                      } finally {
+                        setBusy(false)
+                      }
+                    })()
+                  }}
+                >
+                  Clear thread
+                </button>
               </div>
             )}
           </div>
-          {!agentLive && current && (
+          {!agentLive && current && botEnabled && (
             <p className="bot-banner">Desk bot is answering until you take over. Recordings still land here.</p>
+          )}
+          {!agentLive && current && !botEnabled && (
+            <p className="bot-banner">Desk bot is off in Settings. Take over to reply from this inbox.</p>
           )}
           <div className="thread" ref={threadRef}>
             {messages.map((m) => (
               <div key={m.id} className={`bubble ${m.from}`}>
                 <span className="muted tiny">
                   {m.from === 'owner' ? 'You' : m.from === 'bot' ? 'Desk bot' : 'Customer'} · {fmtWhen(m.createdAtMs)}
+                  {m.editedAtMs ? ' · edited' : ''}
                 </span>
-                <ChatBubbleBody m={m} customerId={selected} />
+                {editMsgId === m.id ? (
+                  <form
+                    className="composer"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      if (!selected) return
+                      void (async () => {
+                        setBusy(true)
+                        try {
+                          await repo.updateChatMessage(selected, m.id, editMsgText)
+                          setEditMsgId(null)
+                        } finally {
+                          setBusy(false)
+                        }
+                      })()
+                    }}
+                  >
+                    <input value={editMsgText} onChange={(e) => setEditMsgText(e.target.value)} />
+                    <button className="btn btn-primary" type="submit" disabled={busy}>
+                      Save
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={() => setEditMsgId(null)}>
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <ChatBubbleBody m={m} customerId={selected} />
+                    <div className="bubble-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditMsgId(m.id)
+                          setEditMsgText(m.text)
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selected || !window.confirm('Delete this message?')) return
+                          void (async () => {
+                            setBusy(true)
+                            try {
+                              await repo.deleteChatMessage(selected, m.id)
+                            } finally {
+                              setBusy(false)
+                            }
+                          })()
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
             {messages.length === 0 && <p className="empty">No messages yet in this thread.</p>}
@@ -243,8 +337,49 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
             )}
             {theirs.map((issue) => (
               <article key={issue.id} className="side-issue">
-                <strong>{issue.title}</strong>
-                <p className="muted tiny">{issue.body || 'No extra detail.'}</p>
+                {editIssueId === issue.id ? (
+                  <>
+                    <label>
+                      Title
+                      <input value={editIssueTitle} onChange={(e) => setEditIssueTitle(e.target.value)} />
+                    </label>
+                    <label>
+                      Details
+                      <textarea rows={3} value={editIssueBody} onChange={(e) => setEditIssueBody(e.target.value)} />
+                    </label>
+                    <div className="quick-renew">
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void (async () => {
+                            setBusy(true)
+                            try {
+                              await repo.updateIssue(issue.customerId, issue.id, {
+                                title: editIssueTitle,
+                                body: editIssueBody,
+                              })
+                              setEditIssueId(null)
+                            } finally {
+                              setBusy(false)
+                            }
+                          })()
+                        }
+                      >
+                        Save
+                      </button>
+                      <button className="btn btn-ghost" type="button" onClick={() => setEditIssueId(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <strong>{issue.title}</strong>
+                    <p className="muted tiny">{issue.body || 'No extra detail.'}</p>
+                  </>
+                )}
                 <div className="chips">
                   {(['open', 'in_progress', 'resolved'] as const).map((status) => (
                     <button
@@ -257,6 +392,36 @@ export function ChatDesk({ customers, issues }: { customers: Customer[]; issues:
                     </button>
                   ))}
                 </div>
+                {editIssueId !== issue.id && (
+                  <div className="bubble-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditIssueId(issue.id)
+                        setEditIssueTitle(issue.title)
+                        setEditIssueBody(issue.body)
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm('Delete this ticket?')) return
+                        void (async () => {
+                          setBusy(true)
+                          try {
+                            await repo.deleteIssue(issue.customerId, issue.id)
+                          } finally {
+                            setBusy(false)
+                          }
+                        })()
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
               </article>
             ))}
             {openIssue && <p className="muted tiny">Mark Ongoing while you are working it. Resolve only when the line is actually back.</p>}

@@ -15,6 +15,7 @@ import 'screens/issue_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/pending_approval_screen.dart';
 import 'screens/registration_wizard.dart';
+import 'screens/settings_screen.dart';
 import 'services/api.dart';
 import 'theme.dart';
 
@@ -260,7 +261,11 @@ class _GateState extends State<Gate> {
       onIssue: () {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => IssueScreen(api: api, customerId: account!.id)));
       },
-      onSignOut: () => signOut(),
+      onSettings: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => SettingsScreen(account: account!, onSignOut: () => signOut())),
+        );
+      },
     );
   }
 }

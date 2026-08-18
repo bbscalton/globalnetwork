@@ -31,6 +31,13 @@ export function CustomerPage({
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [remainDays, setRemainDays] = useState('')
+  const [adjustNote, setAdjustNote] = useState('')
+  const [editMsgId, setEditMsgId] = useState<string | null>(null)
+  const [editMsgText, setEditMsgText] = useState('')
+  const [editIssueId, setEditIssueId] = useState<string | null>(null)
+  const [editIssueTitle, setEditIssueTitle] = useState('')
+  const [editIssueBody, setEditIssueBody] = useState('')
 
   useEffect(() => {
     if (!id) return
@@ -46,7 +53,8 @@ export function CustomerPage({
     if (!customer) return
     setDays(String(customer.planDays || 30))
     setAmount(customer.balanceDue > 0 ? String(customer.balanceDue) : String(customer.feeAmount || ''))
-  }, [customer?.id, customer?.planDays, customer?.feeAmount, customer?.balanceDue])
+    setRemainDays(String(Math.max(0, repo.daysLeft(customer.paidUntilMs, Date.now()))))
+  }, [customer?.id, customer?.planDays, customer?.feeAmount, customer?.balanceDue, customer?.paidUntilMs])
 
   const relatedIssues = useMemo(() => issues.filter((i) => i.customerId === id), [issues, id])
 
@@ -239,7 +247,21 @@ export function CustomerPage({
           >
             Grant 7 days
           </button>
-          {customer.status !== 'suspended' && (
+          {customer.status === 'suspended' ? (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  const res = await repo.unsuspendCustomer(customer.id)
+                  return `Unsuspended · ${res.status}`
+                })
+              }
+            >
+              Unsuspend
+            </button>
+          ) : (
             <button className="btn btn-ghost danger" type="button" disabled={busy} onClick={() => void run(async () => {
               await repo.suspendCustomer(customer.id)
               return 'Service suspended'
@@ -272,11 +294,98 @@ export function CustomerPage({
         </div>
       </section>
 
+      <section className="card action-card">
+        <div className="card-head">
+          <h2>Adjust remaining time</h2>
+        </div>
+        <p className="muted">Set days left without collecting a payment. Writes an adjust entry on the ledger.</p>
+        <div className="form-row">
+          <label>
+            Days remaining
+            <input value={remainDays} onChange={(e) => setRemainDays(e.target.value)} />
+          </label>
+          <label>
+            Note
+            <input value={adjustNote} onChange={(e) => setAdjustNote(e.target.value)} placeholder="Courtesy days, correction…" />
+          </label>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const res = await repo.adjustSubscription({
+                  customerId: customer.id,
+                  daysRemaining: Number(remainDays),
+                  note: adjustNote,
+                })
+                setAdjustNote('')
+                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+              })
+            }
+          >
+            Apply
+          </button>
+        </div>
+        <div className="quick-renew" style={{ marginTop: '0.75rem' }}>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const res = await repo.adjustSubscription({ customerId: customer.id, addDays: 1, note: adjustNote || '+1 day' })
+                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+              })
+            }
+          >
+            +1 day
+          </button>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const res = await repo.adjustSubscription({ customerId: customer.id, addDays: 7, note: adjustNote || '+7 days' })
+                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+              })
+            }
+          >
+            +7 days
+          </button>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const res = await repo.adjustSubscription({ customerId: customer.id, addDays: -1, note: adjustNote || '−1 day' })
+                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+              })
+            }
+          >
+            −1 day
+          </button>
+        </div>
+      </section>
+
       <div className="split">
         <section className="card">
           <div className="card-head">
             <h2>Profile</h2>
           </div>
+          <label>
+            Name
+            <input
+              defaultValue={customer.name}
+              key={`${customer.id}-name`}
+              onBlur={(e) => {
+                const name = e.target.value.trim()
+                if (name && name !== customer.name) void repo.updateCustomerContact(customer.id, { name })
+              }}
+            />
+          </label>
           <label>
             Package
             <select value={customer.planId} onChange={(e) => void assignPlan(e.target.value)}>
@@ -322,6 +431,22 @@ export function CustomerPage({
               }}
             />
           </label>
+          <button
+            className="btn danger"
+            type="button"
+            disabled={busy}
+            style={{ marginTop: '0.85rem' }}
+            onClick={() => {
+              if (!window.confirm(`Delete ${customer.name}'s account, chat, tickets, and payments? This cannot be undone.`)) return
+              void run(async () => {
+                await repo.deleteCustomer(customer.id)
+                navigate('/')
+                return 'Account deleted'
+              })
+            }}
+          >
+            Delete this account
+          </button>
         </section>
 
         <section className="card">
@@ -336,7 +461,23 @@ export function CustomerPage({
                   <strong>{repo.formatEc(p.amount)}</strong> · {p.kind} · {p.daysGranted}d
                   {p.note ? <span className="muted"> — {p.note}</span> : null}
                 </span>
-                <span className="muted tiny">{fmtWhen(p.atMs)}</span>
+                <span className="ledger-end">
+                  <span className="muted tiny">{fmtWhen(p.atMs)}</span>
+                  <button
+                    type="button"
+                    className="text-btn"
+                    disabled={busy}
+                    onClick={() => {
+                      if (!window.confirm('Delete this ledger entry? Service days are not reversed.')) return
+                      void run(async () => {
+                        await repo.deletePayment(customer.id, p.id)
+                        return 'Ledger entry deleted'
+                      })
+                    }}
+                  >
+                    Delete
+                  </button>
+                </span>
               </li>
             ))}
             {payments.length === 0 && customer.paidAmount > 0 && (
@@ -354,13 +495,79 @@ export function CustomerPage({
         <section className="card chat-card">
           <div className="card-head">
             <h2>Thread</h2>
-            <Link to={`/chat?c=${customer.id}`}>Open inbox</Link>
+            <div className="chat-head-actions">
+              <Link to={`/chat?c=${customer.id}`}>Open inbox</Link>
+              <button
+                className="btn btn-ghost danger"
+                type="button"
+                disabled={busy || messages.length === 0}
+                onClick={() => {
+                  if (!window.confirm('Clear this entire chat thread?')) return
+                  void run(async () => {
+                    const res = await repo.clearCustomerChat(customer.id)
+                    return `Cleared ${res.deleted} message${res.deleted === 1 ? '' : 's'}`
+                  })
+                }}
+              >
+                Clear thread
+              </button>
+            </div>
           </div>
           <div className="thread">
             {messages.map((m) => (
               <div key={m.id} className={`bubble ${m.from}`}>
-                <span className="muted tiny">{m.from === 'owner' ? 'You' : m.from === 'bot' ? 'Desk bot' : 'Customer'} · {fmtWhen(m.createdAtMs)}</span>
-                <ChatBubbleBody m={m} customerId={customer.id} />
+                <span className="muted tiny">
+                  {m.from === 'owner' ? 'You' : m.from === 'bot' ? 'Desk bot' : 'Customer'} · {fmtWhen(m.createdAtMs)}
+                  {m.editedAtMs ? ' · edited' : ''}
+                </span>
+                {editMsgId === m.id ? (
+                  <form
+                    className="composer"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void run(async () => {
+                        await repo.updateChatMessage(customer.id, m.id, editMsgText)
+                        setEditMsgId(null)
+                        return 'Message updated'
+                      })
+                    }}
+                  >
+                    <input value={editMsgText} onChange={(e) => setEditMsgText(e.target.value)} />
+                    <button className="btn btn-primary" type="submit" disabled={busy}>
+                      Save
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={() => setEditMsgId(null)}>
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <ChatBubbleBody m={m} customerId={customer.id} />
+                    <div className="bubble-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditMsgId(m.id)
+                          setEditMsgText(m.text)
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm('Delete this message?')) return
+                          void run(async () => {
+                            await repo.deleteChatMessage(customer.id, m.id)
+                            return 'Message deleted'
+                          })
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
             {messages.length === 0 && <p className="muted">No messages yet.</p>}
@@ -381,9 +588,43 @@ export function CustomerPage({
           {relatedIssues.map((issue) => (
             <article key={issue.id} className="ticket">
               <span className={`pill ${issue.status === 'resolved' ? 'ok' : issue.status === 'open' ? 'fail' : 'warn'}`}>{issue.status === 'in_progress' ? 'Ongoing' : issue.status === 'open' ? 'Still open' : 'Resolved'}</span>
-              <h3>{issue.title}</h3>
-              <p className="muted tiny">{fmtWhen(issue.createdAtMs)}</p>
-              <p>{issue.body}</p>
+              {editIssueId === issue.id ? (
+                <>
+                  <label>
+                    Title
+                    <input value={editIssueTitle} onChange={(e) => setEditIssueTitle(e.target.value)} />
+                  </label>
+                  <label>
+                    Details
+                    <textarea rows={3} value={editIssueBody} onChange={(e) => setEditIssueBody(e.target.value)} />
+                  </label>
+                  <div className="quick-renew" style={{ marginTop: 8 }}>
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          await repo.updateIssue(customer.id, issue.id, { title: editIssueTitle, body: editIssueBody })
+                          setEditIssueId(null)
+                          return 'Ticket updated'
+                        })
+                      }
+                    >
+                      Save
+                    </button>
+                    <button className="btn btn-ghost" type="button" onClick={() => setEditIssueId(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3>{issue.title}</h3>
+                  <p className="muted tiny">{fmtWhen(issue.createdAtMs)}</p>
+                  <p>{issue.body}</p>
+                </>
+              )}
               <div className="photos">
                 {issue.photoUrls.map((url) => (
                   <a key={url} href={url} target="_blank" rel="noreferrer">
@@ -403,6 +644,32 @@ export function CustomerPage({
                   </button>
                 ))}
               </div>
+              {editIssueId !== issue.id && (
+                <div className="bubble-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditIssueId(issue.id)
+                      setEditIssueTitle(issue.title)
+                      setEditIssueBody(issue.body)
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm('Delete this ticket?')) return
+                      void run(async () => {
+                        await repo.deleteIssue(customer.id, issue.id)
+                        return 'Ticket deleted'
+                      })
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </article>
           ))}
         </section>

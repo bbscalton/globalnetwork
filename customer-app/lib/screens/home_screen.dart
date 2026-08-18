@@ -10,7 +10,7 @@ class HomeScreen extends StatelessWidget {
     required this.onCall,
     required this.onVideoCall,
     required this.onIssue,
-    required this.onSignOut,
+    required this.onSettings,
   });
 
   final CustomerAccount account;
@@ -18,7 +18,7 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onCall;
   final VoidCallback onVideoCall;
   final VoidCallback onIssue;
-  final VoidCallback onSignOut;
+  final VoidCallback onSettings;
 
   Color get _tone {
     switch (account.status) {
@@ -47,6 +47,11 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Settings',
+          onPressed: onSettings,
+          icon: const Icon(Icons.settings_outlined),
+        ),
         title: Row(
           children: [
             Image.asset('assets/logo-gn.png', width: 32, height: 32, errorBuilder: (_, __, ___) => const Icon(Icons.public)),
@@ -54,9 +59,6 @@ class HomeScreen extends StatelessWidget {
             const Text('My account'),
           ],
         ),
-        actions: [
-          TextButton(onPressed: onSignOut, child: const Text('Sign out')),
-        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),

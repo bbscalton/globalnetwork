@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { IssueTicket } from './lib/types'
 import { AuthImage } from './lib/AuthImage'
-import { setIssueStatus } from './lib/repo'
+import * as repo from './lib/repo'
 import { fmtWhen } from './lib/desk'
 
 const ISSUE_LABEL: Record<IssueTicket['status'], string> = {
@@ -13,6 +14,25 @@ const ISSUE_LABEL: Record<IssueTicket['status'], string> = {
 export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
   const open = issues.filter((i) => i.status !== 'resolved')
   const ongoing = issues.filter((i) => i.status === 'in_progress')
+  const [busy, setBusy] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [err, setErr] = useState<string | null>(null)
+  const issueKey = (issue: IssueTicket) => `${issue.customerId}:${issue.id}`
+
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true)
+    setErr(null)
+    try {
+      await work()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Update failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="desk">
       <header className="desk-hero">
@@ -25,21 +45,55 @@ export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
           </p>
         </div>
       </header>
+      {err && <p className="fail">{err}</p>}
       <div className="ticket-grid">
         {issues.map((issue) => (
           <article key={`${issue.customerId}-${issue.id}`} className="card ticket-card">
             <span className={`pill ${issue.status === 'resolved' ? 'ok' : issue.status === 'open' ? 'fail' : 'warn'}`}>
               {ISSUE_LABEL[issue.status]}
             </span>
-            <h3>{issue.title}</h3>
-            <p className="muted">
-              <Link to={`/chat?c=${issue.customerId}`}>{issue.customerName}</Link>
-              {' · '}
-              <Link to={`/c/${issue.customerId}`}>record</Link>
-              {' · '}
-              {fmtWhen(issue.createdAtMs)}
-            </p>
-            <p>{issue.body}</p>
+            {editId === issueKey(issue) ? (
+              <>
+                <label>
+                  Title
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} />
+                </label>
+                <label>
+                  Details
+                  <textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)} />
+                </label>
+                <div className="quick-renew" style={{ marginTop: 8 }}>
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await repo.updateIssue(issue.customerId, issue.id, { title, body })
+                        setEditId(null)
+                      })
+                    }
+                  >
+                    Save
+                  </button>
+                  <button className="btn btn-ghost" type="button" onClick={() => setEditId(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3>{issue.title}</h3>
+                <p className="muted">
+                  <Link to={`/chat?c=${issue.customerId}`}>{issue.customerName}</Link>
+                  {' · '}
+                  <Link to={`/c/${issue.customerId}`}>record</Link>
+                  {' · '}
+                  {fmtWhen(issue.createdAtMs)}
+                </p>
+                <p>{issue.body}</p>
+              </>
+            )}
             <div className="photos">
               {issue.photoUrls.map((url) => (
                 <a key={url} href={url} target="_blank" rel="noreferrer">
@@ -53,12 +107,38 @@ export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
                   key={status}
                   className={`chip ${issue.status === status ? 'is-on' : ''}`}
                   type="button"
-                  onClick={() => void setIssueStatus(issue.customerId, issue.id, status)}
+                  onClick={() => void repo.setIssueStatus(issue.customerId, issue.id, status)}
                 >
                   {ISSUE_LABEL[status]}
                 </button>
               ))}
             </div>
+            {editId !== issueKey(issue) && (
+              <div className="bubble-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditId(issueKey(issue))
+                    setTitle(issue.title)
+                    setBody(issue.body)
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm('Delete this ticket?')) return
+                    void run(async () => {
+                      await repo.deleteIssue(issue.customerId, issue.id)
+                    })
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            )}
           </article>
         ))}
         {issues.length === 0 && <p className="empty">No tickets yet.</p>}

@@ -1,7 +1,7 @@
 import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
-import { db, sendToOwners, sendToToken } from "./context";
+import { DEFAULT_ORG_ID, db, sendToOwners, sendToToken } from "./context";
 
 const BOT_COOLDOWN_MS = 40_000;
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
@@ -193,6 +193,9 @@ export const onChatCreated = onDocumentCreated(
     }
 
     if (kind === "call") return;
+
+    const org = await db.collection("orgs").doc(DEFAULT_ORG_ID).get();
+    if (org.get("botEnabled") === false) return;
 
     const agentLive = customer.get("chatAgentLive") === true;
     const lastBot = Number(customer.get("lastBotReplyMs") ?? 0);
