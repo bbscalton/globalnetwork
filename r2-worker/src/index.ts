@@ -267,10 +267,40 @@ function binaryHeaders(size: number, contentType: string, filename: string): Hea
   headers.set("access-control-allow-origin", "*");
   headers.set("content-type", contentType);
   headers.set("content-disposition", `attachment; filename="${filename}"`);
-  headers.set("cache-control", "public, max-age=300");
+  headers.set("cache-control", "public, max-age=60, must-revalidate");
   headers.set("accept-ranges", "bytes");
   headers.set("content-length", String(size));
   return headers;
+}
+
+async function serveAppFile(
+  request: Request,
+  env: Env,
+  key: string,
+  makeHeaders: (size: number) => Headers,
+  missing: string,
+): Promise<Response> {
+  if (request.method === "HEAD") {
+    const meta = await env.MEDIA_BUCKET.head(key);
+    if (!meta) return cors({ error: missing }, 404);
+    return new Response(null, { headers: makeHeaders(meta.size) });
+  }
+  const rangeHeader = request.headers.get("range");
+  const obj = rangeHeader
+    ? await env.MEDIA_BUCKET.get(key, { range: request.headers })
+    : await env.MEDIA_BUCKET.get(key);
+  if (!obj) return cors({ error: missing }, 404);
+  const headers = makeHeaders(obj.size);
+  const bodyObj = obj as R2ObjectBody;
+  const ranged = Boolean(rangeHeader && bodyObj.range);
+  if (ranged && bodyObj.range && "offset" in bodyObj.range) {
+    const range = bodyObj.range as { offset: number; length: number };
+    const end = range.offset + range.length - 1;
+    headers.set("content-range", `bytes ${range.offset}-${end}/${obj.size}`);
+    headers.set("content-length", String(range.length));
+    return new Response(bodyObj.body, { status: 206, headers });
+  }
+  return new Response(bodyObj.body, { headers });
 }
 
 function apkHeaders(size: number): Headers {
@@ -298,25 +328,23 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const path = url.pathname.replace(/\/$/, "") || "/";
 
     if (path === "/app/android.apk" || path === "/app/globalnetwork.apk") {
-      if (request.method === "HEAD") {
-        const meta = await env.MEDIA_BUCKET.head(APP_APK_KEY);
-        if (!meta) return cors({ error: "Android app is not published yet." }, 404);
-        return new Response(null, { headers: apkHeaders(meta.size) });
-      }
-      const obj = await env.MEDIA_BUCKET.get(APP_APK_KEY);
-      if (!obj) return cors({ error: "Android app is not published yet." }, 404);
-      return new Response(obj.body, { headers: apkHeaders(obj.size) });
+      return serveAppFile(
+        request,
+        env,
+        APP_APK_KEY,
+        apkHeaders,
+        "Android app is not published yet.",
+      );
     }
 
     if (path === "/app/ios.ipa" || path === "/app/globalnetwork.ipa") {
-      if (request.method === "HEAD") {
-        const meta = await env.MEDIA_BUCKET.head(APP_IPA_KEY);
-        if (!meta) return cors({ error: "iOS app is not published yet." }, 404);
-        return new Response(null, { headers: ipaHeaders(meta.size) });
-      }
-      const obj = await env.MEDIA_BUCKET.get(APP_IPA_KEY);
-      if (!obj) return cors({ error: "iOS app is not published yet." }, 404);
-      return new Response(obj.body, { headers: ipaHeaders(obj.size) });
+      return serveAppFile(
+        request,
+        env,
+        APP_IPA_KEY,
+        ipaHeaders,
+        "iOS app is not published yet.",
+      );
     }
 
     if (path === "/health") {

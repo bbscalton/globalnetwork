@@ -11,7 +11,12 @@ Bundle IDs: Android `gn.globalnetwork.globalnetwork_customer`, iOS `gn.globalnet
 3. The owner must create your customer record **with the same Gmail** before you can see remaining days.
 4. On Android, tap **Continue with Google**, or register with email and password.
 
-Google sign-in uses the Firebase Android app `gn.globalnetwork.globalnetwork_customer`. The debug keystore SHA-1 is already registered. If you switch to a Play App Signing key, add that SHA-1 in Firebase Project settings.
+Google sign-in uses the Firebase Android app `gn.globalnetwork.globalnetwork_customer` and the OAuth **Web** client as `serverClientId`. The website APK is signed with this machine’s Android debug keystore (already registered):
+
+- SHA-1: `D1:47:8C:54:D2:CC:D3:2C:2E:EC:DF:DD:09:7B:FE:BB:F4:95:82:D0`
+- SHA-256: `18:F3:9F:96:9E:F8:1A:06:95:95:13:F1:37:0B:FC:F7:FE:8B:B7:DA:02:07:44:6B:DF:0E:5E:0E:DA:51:F2:DC`
+
+If you switch to a Play App Signing or a new upload key, add that SHA-1 (and SHA-256) in Firebase Console → Project settings → GlobalNetwork Customer.
 
 ## Install
 

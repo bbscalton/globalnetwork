@@ -32,11 +32,31 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Configure Android signing
+        working-directory: customer-app
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_UPLOAD_KEYSTORE_BASE64:-}" ]; then
+            echo "No ANDROID_UPLOAD_KEYSTORE_BASE64 secret; Gradle will use this runner's debug keystore."
+            exit 0
+          fi
+          echo "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 -d > android/upload-keystore.jks
+          {
+            echo "storePassword=${ANDROID_KEYSTORE_PASSWORD}"
+            echo "keyPassword=${ANDROID_KEYSTORE_PASSWORD}"
+            echo "keyAlias=${ANDROID_KEY_ALIAS:-androiddebugkey}"
+            echo "storeFile=upload-keystore.jks"
+          } > android/key.properties
+
       - name: Build Android APK
         working-directory: customer-app
         run: |
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --target-platform android-arm64
 
       - uses: actions/upload-artifact@v4
         with:

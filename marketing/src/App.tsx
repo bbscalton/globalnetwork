@@ -118,7 +118,8 @@ export default function App() {
             <h3>Android</h3>
             <p className="muted" style={{ marginTop: '0.5rem' }}>
               Tap the APK, open the file, and install. If Android asks, allow installs from the browser this
-              one time.
+              one time. If an older GlobalNetwork app is already installed, uninstall it first, then install
+              this file (64-bit phones).
             </p>
             <a className="btn btn-primary" href={APK} style={{ marginTop: '1.1rem' }}>
               Download Android APK
