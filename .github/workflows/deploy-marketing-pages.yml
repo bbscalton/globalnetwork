@@ -50,8 +50,6 @@ jobs:
           VITE_GITHUB_REPO_URL: https://github.com/bbscalton/globalnetwork
           VITE_ANDROID_APK_URL: https://globalnetwork-media.neuereatec.workers.dev/app/android.apk
           VITE_DESK_APK_URL: https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk
-          VITE_IOS_IPA_URL: https://github.com/bbscalton/globalnetwork/releases/latest/download/GlobalNetwork.ipa
-          VITE_IOS_TESTFLIGHT_URL: ${{ secrets.VITE_IOS_TESTFLIGHT_URL }}
         run: |
           npm ci
           npm run build
