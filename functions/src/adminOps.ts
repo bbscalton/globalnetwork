@@ -1,5 +1,12 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { DocumentReference, Query } from "firebase-admin/firestore";
+import {
+  FieldPath,
+  type CollectionReference,
+  type DocumentReference,
+  type DocumentData,
+  type Query,
+  type QueryDocumentSnapshot,
+} from "firebase-admin/firestore";
 import {
   CALLABLE,
   CURRENCY,
@@ -25,6 +32,23 @@ export const DEFAULT_ORG_SETTINGS = {
 
 const STATUSES = new Set(["active", "grace", "expired", "suspended"]);
 const RESET_PHRASE = "RESET GLOBALNETWORK";
+const TIDY_TIMEOUT = { ...CALLABLE, timeoutSeconds: 300, memory: "512MiB" as const };
+const TIDY_PHRASES: Record<string, string> = {
+  clearAllChats: "CLEAR ALL CHATS",
+  deleteAllIssues: "DELETE ALL ISSUES",
+  deleteRejectedCustomers: "DELETE STALE CUSTOMERS",
+  purgeAuditLogs: "PURGE AUDIT LOGS",
+};
+const TIDY_ACTIONS = new Set([
+  "clearAllChats",
+  "deleteResolvedIssues",
+  "deleteAllIssues",
+  "deleteOldChat",
+  "purgeCalls",
+  "purgeAuditLogs",
+  "deleteRejectedCustomers",
+  "deleteMediaMessages",
+]);
 
 async function wipeQuery(target: Query, recursive = false): Promise<number> {
   let total = 0;
@@ -88,6 +112,91 @@ function asBool(value: unknown, fallback: boolean): boolean {
   if (value === "true" || value === "1") return true;
   if (value === "false" || value === "0") return false;
   return fallback;
+}
+
+async function wipeMatching(
+  col: CollectionReference,
+  pred: (data: Record<string, unknown>) => boolean,
+  recursive = false,
+): Promise<number> {
+  let total = 0;
+  let last: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let q: Query = col.orderBy(FieldPath.documentId()).limit(200);
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    if (snap.empty) return total;
+    last = snap.docs[snap.docs.length - 1];
+    const hits = snap.docs.filter((doc) => pred(doc.data() as Record<string, unknown>));
+    if (hits.length) {
+      if (recursive) {
+        await Promise.all(hits.map((doc) => db.recursiveDelete(doc.ref)));
+      } else {
+        const batch = db.batch();
+        for (const doc of hits) batch.delete(doc.ref);
+        await batch.commit();
+      }
+      total += hits.length;
+    }
+    if (snap.size < 200) return total;
+  }
+}
+
+async function mapCustomers(work: (ref: DocumentReference, data: DocumentData) => Promise<number>): Promise<{
+  scanned: number;
+  deleted: number;
+}> {
+  let scanned = 0;
+  let deleted = 0;
+  let last: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let q: Query = db.collection("customers").orderBy(FieldPath.documentId()).limit(50);
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    if (snap.empty) break;
+    for (const doc of snap.docs) {
+      scanned += 1;
+      deleted += await work(doc.ref, doc.data());
+    }
+    last = snap.docs[snap.docs.length - 1];
+    if (snap.size < 50) break;
+  }
+  return { scanned, deleted };
+}
+
+async function clearChatFor(ref: DocumentReference): Promise<number> {
+  const deleted = await wipeQuery(ref.collection("chatMessages"));
+  await ref.update({
+    lastChatPreview: "",
+    lastChatAtMs: 0,
+    lastChatKind: "",
+    lastChatFrom: "",
+    unreadStaff: 0,
+    updatedAtMs: Date.now(),
+  });
+  return deleted;
+}
+
+function isStaleCustomer(data: DocumentData, now: number, olderThanDays: number): boolean {
+  if (String(data.approvalStatus ?? "") === "rejected") return true;
+  const uid = String(data.uid ?? "").trim();
+  if (uid) return false;
+  const paidUntil = Number(data.paidUntilMs ?? 0);
+  if (paidUntil > now) return false;
+  const status = String(data.status ?? "expired");
+  if (status !== "expired" && status !== "suspended") return false;
+  const createdAt = Number(data.createdAtMs ?? 0);
+  const cutoff = now - Math.max(1, olderThanDays) * DAY_MS;
+  if (!createdAt) return String(data.approvalStatus ?? "") === "rejected";
+  return createdAt < cutoff;
+}
+
+function requireTidyPhrase(action: string, confirm: string): void {
+  const needed = TIDY_PHRASES[action];
+  if (!needed) return;
+  if (confirm.trim().toUpperCase() !== needed) {
+    throw new HttpsError("invalid-argument", `Type ${needed} to confirm.`);
+  }
 }
 
 function remainingDays(paidUntilMs: number | null, now: number): number {
@@ -315,15 +424,7 @@ export const clearCustomerChat = onCall(CALLABLE, async (request) => {
   const ref = db.collection("customers").doc(customerId);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
-  const deleted = await wipeQuery(ref.collection("chatMessages"));
-  await ref.update({
-    lastChatPreview: "",
-    lastChatAtMs: 0,
-    lastChatKind: "",
-    lastChatFrom: "",
-    unreadStaff: 0,
-    updatedAtMs: Date.now(),
-  });
+  const deleted = await clearChatFor(ref);
   await writeAudit({ action: "clear_customer_chat", adminEmail: owner.email, targetUid: customerId, detail: `${deleted} messages` });
   return { ok: true, deleted };
 });
@@ -466,3 +567,107 @@ export const factoryReset = onCall(
     };
   },
 );
+
+function isMediaChat(data: Record<string, unknown>): boolean {
+  const kind = chatKind(data);
+  return kind === "voice" || kind === "video" || kind === "call";
+}
+
+export const tidyDesk = onCall(TIDY_TIMEOUT, async (request) => {
+  const owner = await requireOwner(request);
+  const action = String(request.data?.action ?? "").trim();
+  if (!TIDY_ACTIONS.has(action)) {
+    throw new HttpsError("invalid-argument", "Unknown tidy action.");
+  }
+  requireTidyPhrase(action, String(request.data?.confirm ?? ""));
+  const customerId = String(request.data?.customerId ?? "").trim();
+  const olderThanDays = Math.max(1, Math.min(3650, Math.floor(Number(request.data?.olderThanDays ?? 30) || 30)));
+  const cutoff = Date.now() - olderThanDays * DAY_MS;
+  const now = Date.now();
+
+  let deleted = 0;
+  let scanned = 0;
+  let customersDeleted = 0;
+  let detail = action;
+
+  if (action === "purgeAuditLogs") {
+    deleted = await wipeQuery(db.collection("adminAuditLogs"));
+    detail = `${deleted} audit logs`;
+  } else if (action === "clearAllChats") {
+    const result = await mapCustomers(async (ref) => clearChatFor(ref));
+    scanned = result.scanned;
+    deleted = result.deleted;
+    detail = `${deleted} messages across ${scanned} customers`;
+  } else if (action === "deleteResolvedIssues") {
+    const result = await mapCustomers(async (ref) => wipeQuery(ref.collection("issues").where("status", "==", "resolved")));
+    scanned = result.scanned;
+    deleted = result.deleted;
+    detail = `${deleted} resolved issues`;
+  } else if (action === "deleteAllIssues") {
+    const result = await mapCustomers(async (ref) => wipeQuery(ref.collection("issues")));
+    scanned = result.scanned;
+    deleted = result.deleted;
+    detail = `${deleted} issues`;
+  } else if (action === "deleteOldChat") {
+    if (customerId) {
+      const ref = db.collection("customers").doc(customerId);
+      const snap = await ref.get();
+      if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
+      scanned = 1;
+      deleted = await wipeQuery(ref.collection("chatMessages").where("createdAtMs", "<", cutoff));
+      await refreshLastChat(ref);
+      detail = `${deleted} messages older than ${olderThanDays} days`;
+    } else {
+      const result = await mapCustomers(async (ref) => {
+        const n = await wipeQuery(ref.collection("chatMessages").where("createdAtMs", "<", cutoff));
+        if (n) await refreshLastChat(ref);
+        return n;
+      });
+      scanned = result.scanned;
+      deleted = result.deleted;
+      detail = `${deleted} messages older than ${olderThanDays} days`;
+    }
+  } else if (action === "purgeCalls") {
+    const result = await mapCustomers(async (ref) =>
+      wipeMatching(
+        ref.collection("calls"),
+        (data) => {
+          const status = String(data.status ?? "");
+          return status === "ended" || status === "missed";
+        },
+        true,
+      ),
+    );
+    scanned = result.scanned;
+    deleted = result.deleted;
+    detail = `${deleted} ended/missed calls`;
+  } else if (action === "deleteMediaMessages") {
+    const result = await mapCustomers(async (ref) => {
+      const n = await wipeMatching(ref.collection("chatMessages"), isMediaChat);
+      if (n) await refreshLastChat(ref);
+      return n;
+    });
+    scanned = result.scanned;
+    deleted = result.deleted;
+    detail = `${deleted} voice/video/call messages`;
+  } else if (action === "deleteRejectedCustomers") {
+    const result = await mapCustomers(async (ref, data) => {
+      if (!isStaleCustomer(data, now, olderThanDays)) return 0;
+      await db.recursiveDelete(ref);
+      customersDeleted += 1;
+      return 1;
+    });
+    scanned = result.scanned;
+    deleted = result.deleted;
+    detail = `${deleted} stale/rejected customers`;
+  }
+
+  await writeAudit({
+    action: `tidy_${action}`,
+    adminEmail: owner.email,
+    targetUid: customerId || "desk",
+    detail,
+  });
+
+  return { ok: true, action, deleted, scanned, customersDeleted, olderThanDays, detail };
+});

@@ -102,7 +102,10 @@ export function CustomerPage({
     if (!draft.trim()) return
     const text = draft.trim()
     setDraft('')
-    await repo.sendChat(customer.id, text, 'owner')
+    await run(async () => {
+      await repo.sendChat(customer.id, text, 'owner')
+      return ''
+    })
   }
 
   const assignPlan = async (planId: string) => {
@@ -502,6 +505,24 @@ export function CustomerPage({
                 type="button"
                 disabled={busy || messages.length === 0}
                 onClick={() => {
+                  if (!window.confirm('Delete messages older than 30 days in this thread?')) return
+                  void run(async () => {
+                    const res = await repo.tidyDesk({
+                      action: 'deleteOldChat',
+                      customerId: customer.id,
+                      olderThanDays: 30,
+                    })
+                    return `Deleted ${res.deleted} old message${res.deleted === 1 ? '' : 's'}`
+                  })
+                }}
+              >
+                Delete old
+              </button>
+              <button
+                className="btn btn-ghost danger"
+                type="button"
+                disabled={busy || messages.length === 0}
+                onClick={() => {
                   if (!window.confirm('Clear this entire chat thread?')) return
                   void run(async () => {
                     const res = await repo.clearCustomerChat(customer.id)
@@ -638,7 +659,12 @@ export function CustomerPage({
                     key={status}
                     className={`chip ${issue.status === status ? 'is-on' : ''}`}
                     type="button"
-                    onClick={() => void repo.setIssueStatus(customer.id, issue.id, status)}
+                    onClick={() =>
+                      void run(async () => {
+                        await repo.setIssueStatus(customer.id, issue.id, status)
+                        return `Marked ${status === 'in_progress' ? 'ongoing' : status}`
+                      })
+                    }
                   >
                     {status === 'in_progress' ? 'Ongoing' : status === 'open' ? 'Still open' : 'Resolved'}
                   </button>

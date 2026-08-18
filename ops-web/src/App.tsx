@@ -268,7 +268,7 @@ function Shell({
           />
           <Route path="/devices" element={<DevicesDesk />} />
           <Route path="/accounts" element={<AccountsDesk />} />
-          <Route path="/settings" element={<SettingsDesk org={org} />} />
+          <Route path="/settings" element={<SettingsDesk org={org} customers={customers} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

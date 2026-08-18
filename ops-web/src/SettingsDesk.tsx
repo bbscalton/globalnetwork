@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { DEFAULT_ORG_SETTINGS, type OrgSettings } from './lib/types'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
+import { DEFAULT_ORG_SETTINGS, type Customer, type OrgSettings } from './lib/types'
 import * as repo from './lib/repo'
 
 const RESET_PHRASE = 'RESET GLOBALNETWORK'
 
-export function SettingsDesk({ org }: { org: OrgSettings | null }) {
+export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null; customers?: Customer[] }) {
   const [name, setName] = useState(DEFAULT_ORG_SETTINGS.name)
   const [supportPhone, setSupportPhone] = useState('')
   const [supportWhatsapp, setSupportWhatsapp] = useState('')
@@ -13,10 +14,14 @@ export function SettingsDesk({ org }: { org: OrgSettings | null }) {
   const [renewalWarnDays, setRenewalWarnDays] = useState(String(DEFAULT_ORG_SETTINGS.renewalWarnDays))
   const [timezone, setTimezone] = useState(DEFAULT_ORG_SETTINGS.timezone)
   const [resetPhrase, setResetPhrase] = useState('')
+  const [phrases, setPhrases] = useState<Record<string, string>>({})
+  const [oldDays, setOldDays] = useState('30')
+  const [staleDays, setStaleDays] = useState('30')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [resetCounts, setResetCounts] = useState<repo.FactoryResetResult | null>(null)
+  const [tidyResult, setTidyResult] = useState<repo.TidyResult | null>(null)
 
   useEffect(() => {
     const next = org ?? DEFAULT_ORG_SETTINGS
@@ -28,6 +33,11 @@ export function SettingsDesk({ org }: { org: OrgSettings | null }) {
     setRenewalWarnDays(String(next.renewalWarnDays))
     setTimezone(next.timezone)
   }, [org])
+
+  const stale = useMemo(
+    () => customers.filter((c) => repo.isStaleCustomer(c, Date.now(), Number(staleDays) || 30)),
+    [customers, staleDays],
+  )
 
   const run = async (work: () => Promise<string>) => {
     setBusy(true)
@@ -58,7 +68,20 @@ export function SettingsDesk({ org }: { org: OrgSettings | null }) {
     })
   }
 
+  const tidy = (action: repo.TidyAction, confirm?: string, extra?: { olderThanDays?: number }) =>
+    run(async () => {
+      const result = await repo.tidyDesk({
+        action,
+        confirm,
+        olderThanDays: extra?.olderThanDays,
+      })
+      setTidyResult(result)
+      setPhrases((prev) => ({ ...prev, [action]: '' }))
+      return result.detail || `Deleted ${result.deleted}.`
+    })
+
   const phraseOk = resetPhrase.trim().toUpperCase() === RESET_PHRASE
+  const phrase = (key: string) => (phrases[key] ?? '').trim().toUpperCase()
 
   return (
     <div className="desk">
@@ -119,6 +142,261 @@ export function SettingsDesk({ org }: { org: OrgSettings | null }) {
           Save settings
         </button>
       </form>
+
+      <section className="card">
+        <div className="card-head">
+          <h2>Tidy up</h2>
+        </div>
+        <p className="muted">
+          Clean old chat, tickets, calls, and leftover applications without wiping the whole desk. Each action runs as
+          an owner Cloud Function so Firestore rules cannot block it.
+        </p>
+        {tidyResult && (
+          <ul className="ledger" style={{ marginBottom: '1rem' }}>
+            <li>
+              <span>Last action</span>
+              <strong>{tidyResult.action}</strong>
+            </li>
+            <li>
+              <span>Deleted</span>
+              <strong>{tidyResult.deleted}</strong>
+            </li>
+            <li>
+              <span>Customers scanned</span>
+              <strong>{tidyResult.scanned}</strong>
+            </li>
+            {typeof tidyResult.customersDeleted === 'number' && tidyResult.customersDeleted > 0 && (
+              <li>
+                <span>Accounts removed</span>
+                <strong>{tidyResult.customersDeleted}</strong>
+              </li>
+            )}
+          </ul>
+        )}
+
+        <div className="tidy-row">
+          <div>
+            <h3>Clear all chat threads</h3>
+            <p className="muted tiny">Deletes every customer inbox message. Type CLEAR ALL CHATS.</p>
+          </div>
+          <div className="tidy-actions">
+            <input
+              value={phrases.clearAllChats ?? ''}
+              onChange={(e) => setPhrases((p) => ({ ...p, clearAllChats: e.target.value }))}
+              placeholder="CLEAR ALL CHATS"
+            />
+            <button
+              className="btn danger"
+              type="button"
+              disabled={busy || phrase('clearAllChats') !== 'CLEAR ALL CHATS'}
+              onClick={() => {
+                if (!window.confirm('Delete every chat thread on the desk?')) return
+                void tidy('clearAllChats', phrases.clearAllChats)
+              }}
+            >
+              Clear all chats
+            </button>
+          </div>
+        </div>
+
+        <div className="tidy-row">
+          <div>
+            <h3>Delete old chat messages</h3>
+            <p className="muted tiny">Keeps recent messages. Older than the selected window is removed everywhere.</p>
+          </div>
+          <div className="tidy-actions">
+            <select value={oldDays} onChange={(e) => setOldDays(e.target.value)}>
+              <option value="30">Older than 30 days</option>
+              <option value="90">Older than 90 days</option>
+              <option value="180">Older than 180 days</option>
+            </select>
+            <button
+              className="btn btn-ghost danger"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (!window.confirm(`Delete chat messages older than ${oldDays} days for every customer?`)) return
+                void tidy('deleteOldChat', undefined, { olderThanDays: Number(oldDays) })
+              }}
+            >
+              Delete old messages
+            </button>
+          </div>
+        </div>
+
+        <div className="tidy-row">
+          <div>
+            <h3>Delete voice / video clutter</h3>
+            <p className="muted tiny">Removes voice notes, video clips, and call messages from chat threads.</p>
+          </div>
+          <button
+            className="btn btn-ghost danger"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm('Delete all voice, video, and call chat messages?')) return
+              void tidy('deleteMediaMessages')
+            }}
+          >
+            Delete media messages
+          </button>
+        </div>
+
+        <div className="tidy-row">
+          <div>
+            <h3>Delete resolved issues</h3>
+            <p className="muted tiny">Open and ongoing tickets stay. Resolved tickets are removed.</p>
+          </div>
+          <button
+            className="btn btn-ghost danger"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm('Delete every resolved ticket?')) return
+              void tidy('deleteResolvedIssues')
+            }}
+          >
+            Delete resolved
+          </button>
+        </div>
+
+        <div className="tidy-row">
+          <div>
+            <h3>Delete all issues</h3>
+            <p className="muted tiny">Removes every ticket. Type DELETE ALL ISSUES.</p>
+          </div>
+          <div className="tidy-actions">
+            <input
+              value={phrases.deleteAllIssues ?? ''}
+              onChange={(e) => setPhrases((p) => ({ ...p, deleteAllIssues: e.target.value }))}
+              placeholder="DELETE ALL ISSUES"
+            />
+            <button
+              className="btn danger"
+              type="button"
+              disabled={busy || phrase('deleteAllIssues') !== 'DELETE ALL ISSUES'}
+              onClick={() => {
+                if (!window.confirm('Delete every line ticket, including open ones?')) return
+                void tidy('deleteAllIssues', phrases.deleteAllIssues)
+              }}
+            >
+              Delete all issues
+            </button>
+          </div>
+        </div>
+
+        <div className="tidy-row">
+          <div>
+            <h3>Delete ended / missed calls</h3>
+            <p className="muted tiny">Drops finished call records and recording metadata. Live or ringing calls stay.</p>
+          </div>
+          <button
+            className="btn btn-ghost danger"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm('Delete ended and missed call records?')) return
+              void tidy('purgeCalls')
+            }}
+          >
+            Purge call records
+          </button>
+        </div>
+
+        <div className="tidy-row">
+          <div>
+            <h3>Purge admin audit logs</h3>
+            <p className="muted tiny">Wipes the owner activity log. Type PURGE AUDIT LOGS.</p>
+          </div>
+          <div className="tidy-actions">
+            <input
+              value={phrases.purgeAuditLogs ?? ''}
+              onChange={(e) => setPhrases((p) => ({ ...p, purgeAuditLogs: e.target.value }))}
+              placeholder="PURGE AUDIT LOGS"
+            />
+            <button
+              className="btn danger"
+              type="button"
+              disabled={busy || phrase('purgeAuditLogs') !== 'PURGE AUDIT LOGS'}
+              onClick={() => {
+                if (!window.confirm('Delete all admin audit logs?')) return
+                void tidy('purgeAuditLogs', phrases.purgeAuditLogs)
+              }}
+            >
+              Purge audit logs
+            </button>
+          </div>
+        </div>
+
+        <div className="tidy-row">
+          <div>
+            <h3>Delete stale / rejected customers</h3>
+            <p className="muted tiny">
+              Rejected KYC, plus unsigned expired records older than the selected window. Live and paid accounts stay.
+              Type DELETE STALE CUSTOMERS.
+            </p>
+          </div>
+          <div className="tidy-actions">
+            <select value={staleDays} onChange={(e) => setStaleDays(e.target.value)}>
+              <option value="30">Unused 30+ days</option>
+              <option value="90">Unused 90+ days</option>
+            </select>
+            <input
+              value={phrases.deleteRejectedCustomers ?? ''}
+              onChange={(e) => setPhrases((p) => ({ ...p, deleteRejectedCustomers: e.target.value }))}
+              placeholder="DELETE STALE CUSTOMERS"
+            />
+            <button
+              className="btn danger"
+              type="button"
+              disabled={busy || phrase('deleteRejectedCustomers') !== 'DELETE STALE CUSTOMERS'}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `Delete ${stale.length} rejected/stale customer${stale.length === 1 ? '' : 's'}? This cannot be undone.`,
+                  )
+                ) {
+                  return
+                }
+                void tidy('deleteRejectedCustomers', phrases.deleteRejectedCustomers, {
+                  olderThanDays: Number(staleDays),
+                })
+              }}
+            >
+              Delete stale customers
+            </button>
+          </div>
+        </div>
+
+        {stale.length > 0 && (
+          <ul className="ledger" style={{ marginTop: '0.75rem' }}>
+            {stale.slice(0, 20).map((c) => (
+              <li key={c.id}>
+                <span>
+                  <Link to={`/c/${c.id}`}>{c.name || c.email || c.id}</Link>
+                  <span className="muted">
+                    {' '}
+                    · {c.approvalStatus === 'rejected' ? 'rejected KYC' : `${c.status}, never signed in`}
+                  </span>
+                </span>
+                <Link to={`/c/${c.id}`} className="text-btn">
+                  Open
+                </Link>
+              </li>
+            ))}
+            {stale.length > 20 && (
+              <li>
+                <span className="muted">+{stale.length - 20} more match this filter</span>
+              </li>
+            )}
+          </ul>
+        )}
+        {stale.length === 0 && (
+          <p className="muted tiny" style={{ marginTop: '0.75rem' }}>
+            No rejected or unused expired records match the current window.
+          </p>
+        )}
+      </section>
 
       <section className="card danger-zone">
         <div className="card-head">

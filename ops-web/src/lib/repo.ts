@@ -257,9 +257,32 @@ export async function updateCustomerContact(
 
 async function callable<Req extends object, Res>(name: string, data: Req): Promise<Res> {
   if (!functions) throw new Error('Cloud Functions are not configured.')
-  const fn = httpsCallable<Req, Res>(functions, name)
-  const res = await fn(data)
-  return res.data
+  try {
+    const fn = httpsCallable<Req, Res>(functions, name)
+    const res = await fn(data)
+    return res.data
+  } catch (err) {
+    throw new Error(callableMessage(err))
+  }
+}
+
+function callableMessage(err: unknown): string {
+  if (!err || typeof err !== 'object') {
+    return err instanceof Error ? err.message : 'Request failed'
+  }
+  const e = err as { code?: string; message?: string; details?: unknown }
+  const code = String(e.code ?? '')
+  let message = String(e.message ?? '').replace(/^FirebaseError:\s*/i, '').trim()
+  if (typeof e.details === 'string' && e.details.trim()) message = e.details.trim()
+  if (code === 'functions/not-found' || message === 'NOT_FOUND') {
+    return `${message || 'NOT_FOUND'} — this Cloud Function is not deployed. Run firebase deploy --only functions.`
+  }
+  if (code === 'functions/unimplemented' || message === 'UNIMPLEMENTED') {
+    return `${message || 'UNIMPLEMENTED'} — deploy Cloud Functions before using this action.`
+  }
+  if (message) return message
+  if (code) return code
+  return 'Request failed'
 }
 
 export async function createCustomer(input: {
@@ -363,6 +386,44 @@ export type FactoryResetResult = {
 
 export async function factoryReset(confirm: string): Promise<FactoryResetResult> {
   return callable('factoryReset', { confirm, orgId: ORG_ID })
+}
+
+export type TidyAction =
+  | 'clearAllChats'
+  | 'deleteResolvedIssues'
+  | 'deleteAllIssues'
+  | 'deleteOldChat'
+  | 'purgeCalls'
+  | 'purgeAuditLogs'
+  | 'deleteRejectedCustomers'
+  | 'deleteMediaMessages'
+
+export type TidyResult = {
+  ok: boolean
+  action: TidyAction | string
+  deleted: number
+  scanned: number
+  customersDeleted?: number
+  olderThanDays?: number
+  detail?: string
+}
+
+export async function tidyDesk(input: {
+  action: TidyAction
+  customerId?: string
+  olderThanDays?: number
+  confirm?: string
+}): Promise<TidyResult> {
+  return callable('tidyDesk', input)
+}
+
+export function isStaleCustomer(c: Customer, now = Date.now(), olderThanDays = 30): boolean {
+  if (c.approvalStatus === 'rejected') return true
+  if (c.uid) return false
+  if ((c.paidUntilMs ?? 0) > now) return false
+  if (c.status !== 'expired' && c.status !== 'suspended') return false
+  if (!c.createdAtMs) return false
+  return c.createdAtMs < now - Math.max(1, olderThanDays) * 24 * 60 * 60 * 1000
 }
 
 export async function ensureOrgDefaults(): Promise<void> {

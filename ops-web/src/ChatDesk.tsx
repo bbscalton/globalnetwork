@@ -48,6 +48,9 @@ export function ChatDesk({
   const [calls, setCalls] = useState<VoiceCall[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [oldDays, setOldDays] = useState('30')
   const [editMsgId, setEditMsgId] = useState<string | null>(null)
   const [editMsgText, setEditMsgText] = useState('')
   const [editIssueId, setEditIssueId] = useState<string | null>(null)
@@ -71,6 +74,8 @@ export function ChatDesk({
     setEditMsgId(null)
     setEditIssueId(null)
     setDraft('')
+    setErr(null)
+    setMsg(null)
     return () => unsubs.forEach((unsub) => unsub())
   }, [selected])
 
@@ -114,6 +119,20 @@ export function ChatDesk({
   ].sort((a, b) => b.atMs - a.atMs)
   const agentLive = Boolean(current?.chatAgentLive)
 
+  const run = async (work: () => Promise<string | void>) => {
+    setBusy(true)
+    setErr(null)
+    setMsg(null)
+    try {
+      const result = await work()
+      if (result) setMsg(result)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Update failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const send = async (e: FormEvent) => {
     e.preventDefault()
     if (!selected || !draft.trim() || busy) return
@@ -122,6 +141,8 @@ export function ChatDesk({
     setBusy(true)
     try {
       await repo.sendChat(selected, text, 'owner')
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Send failed')
     } finally {
       setBusy(false)
     }
@@ -139,6 +160,8 @@ export function ChatDesk({
           <span className={`pill ${agentLive ? 'ok' : 'warn'}`}>{agentLive ? 'Live agent' : 'Bot covering'}</span>
         )}
       </header>
+      {err && <p className="fail">{err}</p>}
+      {msg && <p className="ok-text">{msg}</p>}
       <div className="inbox-layout inbox-pro">
         <aside className="inbox-list">
           {ranked.map((c) => {
@@ -187,17 +210,39 @@ export function ChatDesk({
                   type="button"
                   disabled={busy}
                   onClick={() =>
-                    void (async () => {
-                      setBusy(true)
-                      try {
-                        await repo.setChatAgentLive(current.id, !agentLive)
-                      } finally {
-                        setBusy(false)
-                      }
-                    })()
+                    void run(async () => {
+                      await repo.setChatAgentLive(current.id, !agentLive)
+                    })
                   }
                 >
                   {agentLive ? 'Return to bot' : 'Take over'}
+                </button>
+                <select
+                  value={oldDays}
+                  onChange={(e) => setOldDays(e.target.value)}
+                  disabled={busy || messages.length === 0}
+                  aria-label="Delete messages older than"
+                >
+                  <option value="30">30 days</option>
+                  <option value="90">90 days</option>
+                </select>
+                <button
+                  className="btn btn-ghost danger"
+                  type="button"
+                  disabled={busy || messages.length === 0}
+                  onClick={() => {
+                    if (!window.confirm(`Delete messages older than ${oldDays} days in this thread?`)) return
+                    void run(async () => {
+                      const res = await repo.tidyDesk({
+                        action: 'deleteOldChat',
+                        customerId: current.id,
+                        olderThanDays: Number(oldDays),
+                      })
+                      return `Deleted ${res.deleted} old message${res.deleted === 1 ? '' : 's'}.`
+                    })
+                  }}
+                >
+                  Delete old
                 </button>
                 <button
                   className="btn btn-ghost danger"
@@ -205,14 +250,10 @@ export function ChatDesk({
                   disabled={busy || messages.length === 0}
                   onClick={() => {
                     if (!window.confirm('Clear this entire chat thread?')) return
-                    void (async () => {
-                      setBusy(true)
-                      try {
-                        await repo.clearCustomerChat(current.id)
-                      } finally {
-                        setBusy(false)
-                      }
-                    })()
+                    void run(async () => {
+                      const res = await repo.clearCustomerChat(current.id)
+                      return `Cleared ${res.deleted} message${res.deleted === 1 ? '' : 's'}.`
+                    })
                   }}
                 >
                   Clear thread
@@ -239,15 +280,10 @@ export function ChatDesk({
                     onSubmit={(e) => {
                       e.preventDefault()
                       if (!selected) return
-                      void (async () => {
-                        setBusy(true)
-                        try {
-                          await repo.updateChatMessage(selected, m.id, editMsgText)
-                          setEditMsgId(null)
-                        } finally {
-                          setBusy(false)
-                        }
-                      })()
+                      void run(async () => {
+                        await repo.updateChatMessage(selected, m.id, editMsgText)
+                        setEditMsgId(null)
+                      })
                     }}
                   >
                     <input value={editMsgText} onChange={(e) => setEditMsgText(e.target.value)} />
@@ -275,14 +311,10 @@ export function ChatDesk({
                         type="button"
                         onClick={() => {
                           if (!selected || !window.confirm('Delete this message?')) return
-                          void (async () => {
-                            setBusy(true)
-                            try {
-                              await repo.deleteChatMessage(selected, m.id)
-                            } finally {
-                              setBusy(false)
-                            }
-                          })()
+                          void run(async () => {
+                            await repo.deleteChatMessage(selected, m.id)
+                            return 'Message deleted'
+                          })
                         }}
                       >
                         Delete
@@ -320,14 +352,9 @@ export function ChatDesk({
                     type="button"
                     disabled={busy}
                     onClick={() =>
-                      void (async () => {
-                        setBusy(true)
-                        try {
-                          await repo.createIssue(current.id, 'Reported in chat', 'Opened from the owner inbox.')
-                        } finally {
-                          setBusy(false)
-                        }
-                      })()
+                      void run(async () => {
+                        await repo.createIssue(current.id, 'Reported in chat', 'Opened from the owner inbox.')
+                      })
                     }
                   >
                     Open issue
@@ -353,18 +380,13 @@ export function ChatDesk({
                         type="button"
                         disabled={busy}
                         onClick={() =>
-                          void (async () => {
-                            setBusy(true)
-                            try {
-                              await repo.updateIssue(issue.customerId, issue.id, {
-                                title: editIssueTitle,
-                                body: editIssueBody,
-                              })
-                              setEditIssueId(null)
-                            } finally {
-                              setBusy(false)
-                            }
-                          })()
+                          void run(async () => {
+                            await repo.updateIssue(issue.customerId, issue.id, {
+                              title: editIssueTitle,
+                              body: editIssueBody,
+                            })
+                            setEditIssueId(null)
+                          })
                         }
                       >
                         Save
@@ -386,7 +408,7 @@ export function ChatDesk({
                       key={status}
                       className={`chip ${issue.status === status ? 'is-on' : ''}`}
                       type="button"
-                      onClick={() => void repo.setIssueStatus(issue.customerId, issue.id, status)}
+                      onClick={() => void run(async () => { await repo.setIssueStatus(issue.customerId, issue.id, status) })}
                     >
                       {ISSUE_LABEL[status]}
                     </button>
@@ -408,14 +430,10 @@ export function ChatDesk({
                       type="button"
                       onClick={() => {
                         if (!window.confirm('Delete this ticket?')) return
-                        void (async () => {
-                          setBusy(true)
-                          try {
-                            await repo.deleteIssue(issue.customerId, issue.id)
-                          } finally {
-                            setBusy(false)
-                          }
-                        })()
+                        void run(async () => {
+                          await repo.deleteIssue(issue.customerId, issue.id)
+                          return 'Ticket deleted'
+                        })
                       }}
                     >
                       Delete

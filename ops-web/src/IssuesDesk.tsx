@@ -14,18 +14,22 @@ const ISSUE_LABEL: Record<IssueTicket['status'], string> = {
 export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
   const open = issues.filter((i) => i.status !== 'resolved')
   const ongoing = issues.filter((i) => i.status === 'in_progress')
+  const resolved = issues.filter((i) => i.status === 'resolved')
   const [busy, setBusy] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [err, setErr] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
   const issueKey = (issue: IssueTicket) => `${issue.customerId}:${issue.id}`
 
-  const run = async (work: () => Promise<void>) => {
+  const run = async (work: () => Promise<string | void>) => {
     setBusy(true)
     setErr(null)
+    setMsg(null)
     try {
-      await work()
+      const result = await work()
+      if (result) setMsg(result)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Update failed')
     } finally {
@@ -44,8 +48,23 @@ export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
             <Link to="/field">field map</Link> follow the same states.
           </p>
         </div>
+        <button
+          className="btn btn-ghost danger"
+          type="button"
+          disabled={busy || resolved.length === 0}
+          onClick={() => {
+            if (!window.confirm(`Delete ${resolved.length} resolved ticket${resolved.length === 1 ? '' : 's'}?`)) return
+            void run(async () => {
+              const res = await repo.tidyDesk({ action: 'deleteResolvedIssues' })
+              return `Deleted ${res.deleted} resolved ticket${res.deleted === 1 ? '' : 's'}.`
+            })
+          }}
+        >
+          Delete resolved
+        </button>
       </header>
       {err && <p className="fail">{err}</p>}
+      {msg && <p className="ok-text">{msg}</p>}
       <div className="ticket-grid">
         {issues.map((issue) => (
           <article key={`${issue.customerId}-${issue.id}`} className="card ticket-card">
@@ -107,7 +126,7 @@ export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
                   key={status}
                   className={`chip ${issue.status === status ? 'is-on' : ''}`}
                   type="button"
-                  onClick={() => void repo.setIssueStatus(issue.customerId, issue.id, status)}
+                  onClick={() => void run(async () => { await repo.setIssueStatus(issue.customerId, issue.id, status) })}
                 >
                   {ISSUE_LABEL[status]}
                 </button>
@@ -132,6 +151,7 @@ export function IssuesDesk({ issues }: { issues: IssueTicket[] }) {
                     if (!window.confirm('Delete this ticket?')) return
                     void run(async () => {
                       await repo.deleteIssue(issue.customerId, issue.id)
+                      return 'Ticket deleted'
                     })
                   }}
                 >

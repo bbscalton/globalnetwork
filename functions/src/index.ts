@@ -26,4 +26,5 @@ export {
   updateIssue,
   deletePayment,
   factoryReset,
+  tidyDesk,
 } from "./adminOps";
