@@ -2,8 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:globalnetwork_customer/main.dart';
 
 void main() {
-  testWidgets('setup screen shows GlobalNetwork', (WidgetTester tester) async {
-    await tester.pumpWidget(const GlobalNetworkApp(firebaseReady: false));
-    expect(find.text('GlobalNetwork'), findsOneWidget);
+  testWidgets('splash shows GlobalNetwork brand', (WidgetTester tester) async {
+    await tester.pumpWidget(GlobalNetworkApp(firebaseReady: Future.value(false)));
+    await tester.pump();
+    expect(find.text('GlobalNetwork'), findsWidgets);
+    expect(find.text('Internet in Antigua · billed in EC\$'), findsOneWidget);
+    expect(find.text('Your days. Your line.'), findsOneWidget);
   });
 }

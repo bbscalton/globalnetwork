@@ -17,6 +17,7 @@ import 'screens/payment_history_screen.dart';
 import 'screens/pending_approval_screen.dart';
 import 'screens/registration_wizard.dart';
 import 'screens/settings_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/api.dart';
 import 'theme.dart';
 
@@ -24,6 +25,16 @@ const r2BaseUrl = String.fromEnvironment(
   'R2_BASE',
   defaultValue: 'https://globalnetwork-media.neuereatec.workers.dev',
 );
+
+Future<bool> _initFirebase() async {
+  if (!kFirebaseOptionsReady) return false;
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,28 +48,24 @@ Future<void> main() async {
       statusBarIconBrightness: Brightness.light,
     ),
   );
-  var firebaseOk = kFirebaseOptionsReady;
-  if (firebaseOk) {
-    try {
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    } catch (_) {
-      firebaseOk = false;
-    }
-  }
-  runApp(GlobalNetworkApp(firebaseReady: firebaseOk));
+  final firebaseReady = _initFirebase();
+  runApp(GlobalNetworkApp(firebaseReady: firebaseReady));
 }
 
 class GlobalNetworkApp extends StatelessWidget {
   const GlobalNetworkApp({super.key, required this.firebaseReady});
 
-  final bool firebaseReady;
+  final Future<bool> firebaseReady;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GlobalNetwork',
       theme: GnTheme.dark(),
-      home: firebaseReady ? const Gate() : const SetupScreen(),
+      home: BrandSplash(
+        firebaseReady: firebaseReady,
+        childBuilder: (ok) => ok ? const Gate() : const SetupScreen(),
+      ),
     );
   }
 }
