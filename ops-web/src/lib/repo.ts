@@ -13,7 +13,9 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { COL, auth, db, functions } from './firebase'
 import { ORG_ID, R2_BASE } from './admin'
-import { DEFAULT_ORG_SETTINGS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OrgSettings, type Payment, type Plan, type VoiceCall } from './types'
+import { DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_SETTINGS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OrgSettings, type Payment, type PaymentKind, type Plan, type VoiceCall } from './types'
+
+export { DAY_EXTENSION_RATE_XCD }
 
 function requireDb() {
   if (!db) throw new Error('Firestore is not configured.')
@@ -160,11 +162,12 @@ export function observePayments(customerId: string, onData: (rows: Payment[]) =>
         return {
           id: d.id,
           amount: Number(data.amount ?? 0),
-          kind: data.kind === 'partial' || data.kind === 'grace' || data.kind === 'adjust' ? data.kind : 'full',
+          kind: paymentKind(data.kind),
           daysGranted: Number(data.daysGranted ?? 0),
           note: String(data.note ?? ''),
           atMs: Number(data.atMs ?? 0),
           byUid: String(data.byUid ?? ''),
+          balanceAdded: Number(data.balanceAdded ?? 0),
         }
       }),
     )
@@ -302,6 +305,20 @@ export async function extendSubscription(input: {
   note: string
 }): Promise<{ paidUntilMs: number; status: CustomerStatus; balanceDue: number }> {
   return callable('extendSubscription', input)
+}
+
+export async function grantDayExtension(input: {
+  customerId: string
+  days: number
+  note?: string
+}): Promise<{ paidUntilMs: number; status: CustomerStatus; balanceDue: number; balanceAdded: number; daysGranted: number }> {
+  return callable('grantDayExtension', input)
+}
+
+function paymentKind(raw: unknown): PaymentKind {
+  const kind = String(raw ?? '')
+  if (kind === 'partial' || kind === 'grace' || kind === 'adjust' || kind === 'extension') return kind
+  return 'full'
 }
 
 export async function reviewCustomerApplication(

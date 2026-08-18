@@ -45,14 +45,20 @@ export type Plan = {
   active: boolean
 }
 
+/** Unpaid day-extension rate billed onto balanceDue (XCD / EC$). */
+export const DAY_EXTENSION_RATE_XCD = 6
+
+export type PaymentKind = 'full' | 'partial' | 'grace' | 'adjust' | 'extension'
+
 export type Payment = {
   id: string
   amount: number
-  kind: 'full' | 'partial' | 'grace' | 'adjust'
+  kind: PaymentKind
   daysGranted: number
   note: string
   atMs: number
   byUid: string
+  balanceAdded?: number
 }
 
 export type ChatMessage = {

@@ -17,6 +17,8 @@ export const ADMIN_EMAIL = "neuereatec@gmail.com";
 export const DEFAULT_ORG_ID = "globalnetwork";
 export const CURRENCY = "XCD";
 export const DAY_MS = 24 * 60 * 60 * 1000;
+/** Unpaid day-extension rate billed onto balanceDue (XCD / EC$). */
+export const DAY_EXTENSION_RATE_XCD = 6;
 
 function firebaseApp() {
   return getApps().length ? getApp() : initializeApp();

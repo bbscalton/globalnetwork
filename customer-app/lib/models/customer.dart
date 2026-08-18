@@ -150,6 +150,7 @@ class PaymentRecord {
     required this.daysGranted,
     required this.note,
     required this.atMs,
+    this.balanceAdded = 0,
   });
 
   final String id;
@@ -158,6 +159,7 @@ class PaymentRecord {
   final int daysGranted;
   final String note;
   final int atMs;
+  final double balanceAdded;
 
   String get kindLabel {
     switch (kind) {
@@ -167,6 +169,8 @@ class PaymentRecord {
         return 'Grace';
       case 'adjust':
         return 'Time adjust';
+      case 'extension':
+        return 'Day extension';
       default:
         return 'Paid in full';
     }
@@ -177,6 +181,9 @@ class PaymentRecord {
   String get amountLabel => CustomerAccount.ec(amount);
 
   String get daysLabel {
+    if (kind == 'extension') {
+      return '$daysGranted days · ${CustomerAccount.ec(balanceAdded)} added to balance';
+    }
     if (daysGranted == 0) return 'No days added';
     if (daysGranted == 1) return '1 day granted';
     if (daysGranted == -1) return '1 day removed';
@@ -186,7 +193,8 @@ class PaymentRecord {
 
   factory PaymentRecord.from(String id, Map<String, dynamic> data) {
     final rawKind = (data['kind'] as String?)?.trim() ?? 'full';
-    final kind = rawKind == 'partial' || rawKind == 'grace' || rawKind == 'adjust' ? rawKind : 'full';
+    const known = {'partial', 'grace', 'adjust', 'extension'};
+    final kind = known.contains(rawKind) ? rawKind : 'full';
     return PaymentRecord(
       id: id,
       amount: (data['amount'] as num?)?.toDouble() ?? 0,
@@ -194,6 +202,7 @@ class PaymentRecord {
       daysGranted: (data['daysGranted'] as num?)?.toInt() ?? 0,
       note: (data['note'] as String?)?.trim() ?? '',
       atMs: (data['atMs'] as num?)?.toInt() ?? 0,
+      balanceAdded: (data['balanceAdded'] as num?)?.toDouble() ?? 0,
     );
   }
 }

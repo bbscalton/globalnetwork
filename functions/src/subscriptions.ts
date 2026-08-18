@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { CALLABLE, CURRENCY, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireOwner, sendToOwners, sendToToken, writeAudit } from "./context";
+import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DAY_MS, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireOwner, sendToOwners, sendToToken, writeAudit } from "./context";
 
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
 
@@ -156,7 +156,7 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
     const statusNow = String(snap.get("status") ?? "expired");
     const base = statusNow === "active" || statusNow === "grace" ? Math.max(prevUntil, now) : now;
-    const paidUntilMs = base + days * 24 * 60 * 60 * 1000;
+    const paidUntilMs = base + days * DAY_MS;
     const paidAmount = prevPaid + amountPaid;
     const cycleFee = feeAmount > 0 ? feeAmount : amountPaid;
     const partial = feeAmount > 0 && amountPaid < feeAmount;
@@ -198,6 +198,69 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
     customer.get("fcmToken") as string | undefined,
     "GlobalNetwork service updated",
     `Your internet service is extended to ${new Date(result.paidUntilMs).toLocaleDateString()}.`,
+    { type: "subscription", customerId },
+  );
+
+  return result;
+});
+
+export const grantDayExtension = onCall(CALLABLE, async (request) => {
+  const owner = await requireOwner(request);
+  const customerId = String(request.data?.customerId ?? "");
+  const days = Math.floor(Number(request.data?.days ?? 0));
+  const note = String(request.data?.note ?? "").trim();
+  if (!customerId || !Number.isFinite(days) || days < 1) {
+    throw new HttpsError("invalid-argument", "customerId and days (>= 1) are required.");
+  }
+
+  const charge = days * DAY_EXTENSION_RATE_XCD;
+  const ledgerNote =
+    note || `${days}-day extension @ EC$${DAY_EXTENSION_RATE_XCD}/day · EC$${charge} added to balance`;
+
+  const ref = db.collection("customers").doc(customerId);
+  const now = Date.now();
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
+    const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
+    const statusNow = String(snap.get("status") ?? "expired");
+    const prevBalance = Number(snap.get("balanceDue") ?? 0);
+    const base = statusNow === "active" || statusNow === "grace" ? Math.max(prevUntil, now) : now;
+    const paidUntilMs = base + days * DAY_MS;
+    const balanceDue = prevBalance + charge;
+    tx.update(ref, {
+      paidUntilMs,
+      balanceDue,
+      status: "grace",
+      graceUntilMs: paidUntilMs,
+      approvalStatus: "approved",
+      approvedAtMs: now,
+      updatedAtMs: now,
+    });
+    tx.set(ref.collection("payments").doc(), {
+      amount: 0,
+      kind: "extension",
+      daysGranted: days,
+      balanceAdded: charge,
+      note: ledgerNote,
+      atMs: now,
+      byUid: owner.uid,
+    });
+    return { paidUntilMs, status: "grace" as const, balanceDue, balanceAdded: charge, daysGranted: days };
+  });
+
+  await writeAudit({
+    action: "grant_day_extension",
+    adminEmail: owner.email,
+    targetUid: customerId,
+    detail: `${days}d charge ${charge} note=${ledgerNote}`,
+  });
+
+  const customer = await ref.get();
+  await sendToToken(
+    customer.get("fcmToken") as string | undefined,
+    "GlobalNetwork service updated",
+    `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${new Date(result.paidUntilMs).toLocaleDateString()}. EC$${charge} was added to your balance.`,
     { type: "subscription", customerId },
   );
 

@@ -25,6 +25,7 @@ export function CustomerPage({
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [draft, setDraft] = useState('')
   const [days, setDays] = useState('')
+  const [extendDays, setExtendDays] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -95,6 +96,22 @@ export function CustomerPage({
       })
       setNote('')
       return `Service through ${fmtDate(res.paidUntilMs)} · ${res.status} · balance ${repo.formatEc(res.balanceDue)}`
+    })
+
+  const extendN = Math.floor(Number(extendDays))
+  const extendCharge =
+    Number.isFinite(extendN) && extendN >= 1 ? extendN * repo.DAY_EXTENSION_RATE_XCD : null
+
+  const grantExtension = () =>
+    run(async () => {
+      if (!Number.isFinite(extendN) || extendN < 1) throw new Error('Enter how many days to extend.')
+      const res = await repo.grantDayExtension({
+        customerId: customer.id,
+        days: extendN,
+        note: note || undefined,
+      })
+      setNote('')
+      return `Extended ${res.daysGranted}d · ${res.status} · ${repo.formatEc(res.balanceAdded)} added to balance · now ${repo.formatEc(res.balanceDue)} owed · through ${fmtDate(res.paidUntilMs)}`
     })
 
   const send = async (e: FormEvent) => {
@@ -242,14 +259,6 @@ export function CustomerPage({
           >
             Collect full {customer.planDays || 30}d · {repo.formatEc(customer.feeAmount)}
           </button>
-          <button
-            className="btn btn-ghost"
-            type="button"
-            disabled={busy}
-            onClick={() => void extend(7, Number(amount || 0), note || 'Seven-day top-up')}
-          >
-            Grant 7 days
-          </button>
           {customer.status === 'suspended' ? (
             <button
               className="btn btn-ghost"
@@ -273,6 +282,20 @@ export function CustomerPage({
             </button>
           )}
         </div>
+        <div className="form-row" style={{ marginTop: '1rem' }}>
+          <label>
+            Days to extend
+            <input value={extendDays} onChange={(e) => setExtendDays(e.target.value)} placeholder="e.g. 3" />
+          </label>
+          <button className="btn btn-ghost" type="button" disabled={busy || extendCharge == null} onClick={() => void grantExtension()}>
+            Extend
+          </button>
+        </div>
+        <p className="muted tiny">
+          {extendCharge != null
+            ? `EC$${repo.DAY_EXTENSION_RATE_XCD} × ${extendN} days = ${repo.formatEc(extendCharge)} added to balance`
+            : `EC$${repo.DAY_EXTENSION_RATE_XCD} per day added to what they owe when they next pay.`}
+        </p>
         <div className="form-row" style={{ marginTop: '1rem' }}>
           <label>
             Days to grant
@@ -461,7 +484,10 @@ export function CustomerPage({
             {payments.map((p) => (
               <li key={p.id}>
                 <span>
-                  <strong>{repo.formatEc(p.amount)}</strong> · {p.kind} · {p.daysGranted}d
+                  <strong>
+                    {p.kind === 'extension' ? `${repo.formatEc(p.balanceAdded || 0)} owed` : repo.formatEc(p.amount)}
+                  </strong>{' '}
+                  · {p.kind} · {p.daysGranted}d
                   {p.note ? <span className="muted"> — {p.note}</span> : null}
                 </span>
                 <span className="ledger-end">

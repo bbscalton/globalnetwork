@@ -3,6 +3,7 @@ export {
   savePlan,
   createCustomer,
   extendSubscription,
+  grantDayExtension,
   suspendCustomer,
   linkCustomerAccount,
   heartbeat,

@@ -83,6 +83,8 @@ class _PaymentCard extends StatelessWidget {
         return const Color(0xFF38BDF8);
       case 'adjust':
         return const Color(0xFFA78BFA);
+      case 'extension':
+        return const Color(0xFFFBBF24);
       default:
         return const Color(0xFF34D399);
     }
@@ -123,11 +125,13 @@ class _PaymentCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            row.amountLabel,
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: GnTheme.cyan, height: 1),
+            row.kind == 'extension' ? row.daysLabel : row.amountLabel,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: GnTheme.cyan, height: 1.15),
           ),
-          const SizedBox(height: 8),
-          Text(row.daysLabel, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+          if (row.kind != 'extension') ...[
+            const SizedBox(height: 8),
+            Text(row.daysLabel, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+          ],
           if (row.note.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(row.note, style: const TextStyle(color: Colors.white70, height: 1.4)),
