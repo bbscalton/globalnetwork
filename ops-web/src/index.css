@@ -418,6 +418,16 @@ p.fail { padding: 0.7rem 0.85rem; border-radius: 12px; }
   background: rgba(34, 211, 238, 0.16); color: #67e8f9;
 }
 .call-toast .call-actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.call-toast.has-video { flex-direction: column; align-items: stretch; }
+.call-video-stage {
+  position: relative; width: 100%; max-width: 420px; aspect-ratio: 4/3;
+  border-radius: 14px; overflow: hidden; background: #000; border: 1px solid var(--line);
+}
+.call-remote-video { width: 100%; height: 100%; object-fit: cover; }
+.call-local-video {
+  position: absolute; right: 0.45rem; bottom: 0.45rem; width: 28%; max-width: 110px;
+  aspect-ratio: 3/4; object-fit: cover; border-radius: 10px; border: 1px solid rgba(255,255,255,0.35);
+}
 
 @media (max-width: 1180px) {
   .inbox-pro { grid-template-columns: 240px 1fr; }
