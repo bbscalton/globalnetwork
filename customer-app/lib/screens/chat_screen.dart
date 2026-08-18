@@ -1,13 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
-import 'package:video_player/video_player.dart';
 
 import '../models/customer.dart';
 import '../services/api.dart';
@@ -77,6 +76,10 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
 
   Future<void> _startRecord() async {
     if (recording || sending) return;
+    if (kIsWeb) {
+      _flash('Voice notes are on the Android and iPhone apps. Type a message or send a short clip here.');
+      return;
+    }
     focus.unfocus();
     if (!await _micReady()) return;
     try {
@@ -122,21 +125,19 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       recordPath = null;
     });
     if (!send || path == null) {
-      final file = path == null ? null : File(path);
-      if (file != null && await file.exists()) await file.delete();
       return;
     }
     if (elapsed.inMilliseconds < 400) {
       _flash('Hold a little longer to record a voice note.');
       return;
     }
-    await _uploadVoice(File(path), elapsed);
+    await _uploadVoice(path, elapsed);
   }
 
-  Future<void> _uploadVoice(File file, Duration elapsed) async {
+  Future<void> _uploadVoice(String path, Duration elapsed) async {
     setState(() => sending = true);
     try {
-      final bytes = await file.readAsBytes();
+      final bytes = await XFile(path).readAsBytes();
       final url = await widget.api.uploadChatFile(
         customerId: widget.customerId,
         fileName: 'voice.m4a',
@@ -154,7 +155,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     } catch (e) {
       _flash(e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (await file.exists()) await file.delete();
       if (mounted) setState(() => sending = false);
     }
   }
@@ -197,6 +197,12 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
 
   Future<void> _pickClip() async {
     focus.unfocus();
+    if (kIsWeb) {
+      final file = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 15));
+      if (file == null) return;
+      await _uploadClip(file);
+      return;
+    }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: GnTheme.card,
@@ -239,19 +245,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
 
   Future<void> _uploadClip(XFile file) async {
     setState(() => sending = true);
-    VideoPlayerController? probe;
     try {
-      try {
-        probe = VideoPlayerController.file(File(file.path));
-        await probe.initialize();
-        if (probe.value.duration > const Duration(seconds: 16)) {
-          _flash('Keep video clips to 15 seconds.');
-          return;
-        }
-      } catch (_) {
-        await probe?.dispose();
-        probe = null;
-      }
       final bytes = await file.readAsBytes();
       if (bytes.lengthInBytes > 28 * 1024 * 1024) {
         _flash('That clip is too large. Record a shorter 15-second clip.');
@@ -268,13 +262,11 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
         text: 'Video clip',
         kind: 'video',
         mediaUrl: url,
-        durationMs: probe?.value.duration.inMilliseconds ?? 0,
       );
       HapticFeedback.lightImpact();
     } catch (e) {
       _flash(e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      await probe?.dispose();
       if (mounted) setState(() => sending = false);
     }
   }
@@ -449,6 +441,13 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                 icon: Icons.send_rounded,
                 iconColor: GnTheme.navy,
                 onPressed: sending ? null : _sendText,
+              )
+            else if (kIsWeb)
+              _RoundAction(
+                color: GnTheme.cyan.withValues(alpha: 0.35),
+                icon: Icons.send_rounded,
+                iconColor: GnTheme.navy,
+                onPressed: null,
               )
             else
               GestureDetector(

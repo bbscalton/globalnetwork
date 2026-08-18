@@ -1,4 +1,6 @@
 const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
+const WEB_APP =
+  (import.meta.env.VITE_CUSTOMER_WEB_URL as string | undefined) || './app/'
 const APK =
   (import.meta.env.VITE_ANDROID_APK_URL as string | undefined) ||
   'https://globalnetwork-media.neuereatec.workers.dev/app/android.apk'
@@ -22,6 +24,9 @@ export default function App() {
           <a href="#plans">Plans</a>
         </nav>
         <div className="nav-ctas">
+          <a className="btn btn-ghost" href={WEB_APP}>
+            Open web app
+          </a>
           <a className="btn btn-ghost" href={APK}>
             Download Android
           </a>
@@ -45,7 +50,10 @@ export default function App() {
             full fee isn’t ready, chat from the field, and file line issues with photos.
           </p>
           <div className="hero-ctas">
-            <a className="btn btn-primary btn-lg" href={APK}>
+            <a className="btn btn-primary btn-lg" href={WEB_APP}>
+              Open web app
+            </a>
+            <a className="btn btn-ghost-on-dark btn-lg" href={APK}>
               Download Android app
             </a>
             <a className="btn btn-ghost-on-dark btn-lg" href={IPA}>
@@ -56,8 +64,8 @@ export default function App() {
             </a>
           </div>
           <p className="hero-note">
-            Android installs from the APK. iPhone cannot install a website IPA the same way — use TestFlight
-            when the owner publishes a link, or see Get the app.
+            Use the web app in the browser, or install Android from the APK. iPhone cannot install a website
+            IPA the same way — use TestFlight when the owner publishes a link, or see Get the app.
           </p>
         </div>
       </section>
@@ -71,10 +79,10 @@ export default function App() {
         </p>
         <div className="section-grid">
           {[
-            ['1 · Apps', 'Owner web desk plus Flutter iOS & Android customer app.'],
+            ['1 · Apps', 'Owner web desk plus Flutter customer app on web, Android, and iOS.'],
             ['2 · Firebase', 'Auth, Firestore customers, Cloud Functions for extend-days, FCM alerts.'],
             ['3 · Cloudflare', 'Worker + R2 for issue photos, the Android APK download, D1 usage, and KV cache.'],
-            ['4 · Hosting', 'GitHub Pages marketing site and owner desk; unsigned iOS IPA on GitHub Releases.'],
+            ['4 · Hosting', 'GitHub Pages marketing site, owner desk, and customer web app; unsigned iOS IPA on GitHub Releases.'],
           ].map(([title, body]) => (
             <article key={title} className="glass-card">
               <h3>{title}</h3>
@@ -107,13 +115,24 @@ export default function App() {
 
       <section id="download" className="section">
         <p className="eyebrow">Customer app</p>
-        <h2>Download Android or iOS</h2>
+        <h2>Open on the web, or download Android / iOS</h2>
         <p className="muted" style={{ maxWidth: 720, marginTop: '0.75rem' }}>
-          Same Flutter app for both phones. Android can install from this site. Apple does not allow a normal
-          iPhone to sideload an IPA from a website — Settings will block it unless the build is signed and
-          delivered through TestFlight or the App Store.
+          Same Flutter app in the browser, on Android, and on iPhone. The web app is hosted on this site.
+          Android can also install from the APK. Apple does not allow a normal iPhone to sideload an IPA from
+          a website — Settings will block it unless the build is signed and delivered through TestFlight or
+          the App Store.
         </p>
         <div className="section-grid">
+          <article className="glass-card">
+            <h3>Web</h3>
+            <p className="muted" style={{ marginTop: '0.5rem' }}>
+              Sign in with Google or email in the browser. Check days left, chat, payment history, and report
+              line issues. Call and video are best-effort in the browser.
+            </p>
+            <a className="btn btn-primary" href={WEB_APP} style={{ marginTop: '1.1rem' }}>
+              Open web app
+            </a>
+          </article>
           <article className="glass-card">
             <h3>Android</h3>
             <p className="muted" style={{ marginTop: '0.5rem' }}>
@@ -171,7 +190,8 @@ export default function App() {
       </section>
 
       <footer className="site-footer">
-        GlobalNetwork · Antigua · EC dollars · Android APK on Cloudflare R2 · iOS IPA on GitHub Releases
+        GlobalNetwork · Antigua · EC dollars · Web app on GitHub Pages · Android APK on Cloudflare R2 · iOS IPA
+        on GitHub Releases
       </footer>
     </div>
   )

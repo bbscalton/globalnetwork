@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api.dart';
@@ -26,7 +27,10 @@ class _IssueScreenState extends State<IssueScreen> {
     });
     try {
       final picker = ImagePicker();
-      final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 75);
+      final photo = await picker.pickImage(
+        source: kIsWeb ? ImageSource.gallery : ImageSource.camera,
+        imageQuality: 75,
+      );
       final urls = <String>[];
       final issueId = DateTime.now().millisecondsSinceEpoch.toString();
       if (photo != null) {
@@ -69,7 +73,7 @@ class _IssueScreenState extends State<IssueScreen> {
             FilledButton(
               onPressed: busy ? null : _send,
               style: FilledButton.styleFrom(backgroundColor: GnTheme.cyan, foregroundColor: GnTheme.navy),
-              child: Text(busy ? 'Uploading…' : 'Take photo & submit'),
+              child: Text(busy ? 'Uploading…' : (kIsWeb ? 'Choose photo & submit' : 'Take photo & submit')),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(

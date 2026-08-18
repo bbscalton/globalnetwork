@@ -49,17 +49,22 @@ String villageFromNominatim(Map<String, dynamic> json) {
 }
 
 Future<String> reverseGeocode(double lat, double lng) async {
-  final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
-    'lat': lat.toStringAsFixed(6),
-    'lon': lng.toStringAsFixed(6),
-    'format': 'jsonv2',
-    'zoom': '16',
-    'addressdetails': '1',
-  });
-  final res = await http.get(uri, headers: {'User-Agent': 'GlobalNetworkAntigua/1.0 (customer-app)', 'Accept': 'application/json'});
-  if (res.statusCode >= 300) return 'Shared pin in Antigua';
-  final json = jsonDecode(res.body);
-  if (json is Map<String, dynamic>) return villageFromNominatim(json);
+  try {
+    final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
+      'lat': lat.toStringAsFixed(6),
+      'lon': lng.toStringAsFixed(6),
+      'format': 'jsonv2',
+      'zoom': '16',
+      'addressdetails': '1',
+    });
+    final res = await http.get(
+      uri,
+      headers: {'User-Agent': 'GlobalNetworkAntigua/1.0 (customer-app)', 'Accept': 'application/json'},
+    );
+    if (res.statusCode >= 300) return 'Shared pin in Antigua';
+    final json = jsonDecode(res.body);
+    if (json is Map<String, dynamic>) return villageFromNominatim(json);
+  } catch (_) {}
   return 'Shared pin in Antigua';
 }
 

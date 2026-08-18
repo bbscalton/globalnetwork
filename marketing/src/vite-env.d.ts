@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_R2_MEDIA_PROXY_BASE_URL?: string
   readonly VITE_FUNCTIONS_HEALTH_URL?: string
   readonly VITE_OPS_WEB_URL?: string
+  readonly VITE_CUSTOMER_WEB_URL?: string
   readonly VITE_MARKETING_URL?: string
   readonly VITE_ANDROID_APK_URL?: string
   readonly VITE_IOS_IPA_URL?: string

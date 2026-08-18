@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
@@ -17,10 +17,14 @@ class GnApi {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
-  final _google = GoogleSignIn(
-    scopes: const ['email', 'profile'],
-    serverClientId: '367351875740-matj6sj8li188ool3fi0lra6h58ne2ht.apps.googleusercontent.com',
-  );
+  GoogleSignIn? _google;
+
+  GoogleSignIn get _googleClient {
+    return _google ??= GoogleSignIn(
+      scopes: const ['email', 'profile'],
+      serverClientId: '367351875740-matj6sj8li188ool3fi0lra6h58ne2ht.apps.googleusercontent.com',
+    );
+  }
 
   User? get user => _auth.currentUser;
 
@@ -35,14 +39,23 @@ class GnApi {
   }
 
   Future<void> signInWithGoogle() async {
-    final account = await _google.signIn();
+    if (kIsWeb) {
+      final provider = GoogleAuthProvider()
+        ..addScope('email')
+        ..addScope('profile')
+        ..setCustomParameters({'prompt': 'select_account'});
+      // Popup only: redirect on GitHub Pages drops the session (same as ops-web).
+      await _auth.signInWithPopup(provider);
+      return;
+    }
+    final account = await _googleClient.signIn();
     if (account == null) {
       throw Exception('Google sign-in was cancelled.');
     }
     final tokens = await account.authentication;
     final idToken = tokens.idToken;
     if (idToken == null || idToken.isEmpty) {
-      await _google.signOut();
+      await _googleClient.signOut();
       throw Exception('Google did not return an ID token. Try again.');
     }
     await _auth.signInWithCredential(
@@ -51,9 +64,11 @@ class GnApi {
   }
 
   Future<void> signOut() async {
-    try {
-      await _google.signOut();
-    } catch (_) {}
+    if (!kIsWeb) {
+      try {
+        await _googleClient.signOut();
+      } catch (_) {}
+    }
     await _auth.signOut();
   }
 
@@ -142,6 +157,7 @@ class GnApi {
   }
 
   Future<String?> readFcmToken() async {
+    if (kIsWeb) return null;
     try {
       await FirebaseMessaging.instance.requestPermission();
       return FirebaseMessaging.instance.getToken();

@@ -45,6 +45,7 @@ jobs:
           VITE_FUNCTIONS_HEALTH_URL: ${{ secrets.VITE_FUNCTIONS_HEALTH_URL }}
           VITE_PLATFORM_HEALTH_URL: ${{ secrets.VITE_PLATFORM_HEALTH_URL }}
           VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
+          VITE_CUSTOMER_WEB_URL: https://bbscalton.github.io/globalnetwork/app/
           VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
           VITE_GITHUB_REPO_URL: https://github.com/bbscalton/globalnetwork
           VITE_ANDROID_APK_URL: https://globalnetwork-media.neuereatec.workers.dev/app/android.apk
@@ -73,6 +74,21 @@ jobs:
           cp dist/index.html ../marketing/dist/ops/404.html
           cp ../marketing/dist/index.html ../marketing/dist/404.html
           touch ../marketing/dist/.nojekyll
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build customer web app into /app
+        working-directory: customer-app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter build web --release --base-href /globalnetwork/app/
+          mkdir -p ../marketing/dist/app
+          cp -R build/web/. ../marketing/dist/app/
+          cp build/web/index.html ../marketing/dist/app/404.html
 
       - uses: actions/configure-pages@v5
         with:

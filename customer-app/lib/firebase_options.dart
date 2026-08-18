@@ -6,7 +6,7 @@ const kFirebaseOptionsReady = true;
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError('Web is not used for the customer app.');
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -17,6 +17,16 @@ class DefaultFirebaseOptions {
         throw UnsupportedError('Unsupported platform.');
     }
   }
+
+  /// Same Firebase web app as iOS currently references (`globalnetwork-isp`).
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyBkv6V-EDJZWHoRFyVDbl5dRVvwMwqlZTI',
+    appId: '1:367351875740:web:471e1f400fe8e805c64559',
+    messagingSenderId: '367351875740',
+    projectId: 'globalnetwork-isp',
+    authDomain: 'globalnetwork-isp.firebaseapp.com',
+    storageBucket: 'globalnetwork-isp.firebasestorage.app',
+  );
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBg3K1ibbafKJhSGEELcEU-8TN0RXzWLYw',
