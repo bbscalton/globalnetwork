@@ -105,6 +105,19 @@ class CustomerAccount {
     return 'EC\$$buf';
   }
 
+  static String when(int atMs) {
+    if (atMs <= 0) return 'Date not recorded';
+    final d = DateTime.fromMillisecondsSinceEpoch(atMs);
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final hour12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+    final ampm = d.hour >= 12 ? 'PM' : 'AM';
+    final min = d.minute.toString().padLeft(2, '0');
+    return '${d.day} ${months[d.month - 1]} ${d.year}, $hour12:$min $ampm';
+  }
+
   factory CustomerAccount.from(String id, Map<String, dynamic> data) {
     return CustomerAccount(
       id: id,
@@ -125,6 +138,62 @@ class CustomerAccount {
       lat: (data['lat'] as num?)?.toDouble(),
       lng: (data['lng'] as num?)?.toDouble(),
       locationLabel: (data['locationLabel'] ?? '') as String,
+    );
+  }
+}
+
+class PaymentRecord {
+  PaymentRecord({
+    required this.id,
+    required this.amount,
+    required this.kind,
+    required this.daysGranted,
+    required this.note,
+    required this.atMs,
+  });
+
+  final String id;
+  final double amount;
+  final String kind;
+  final int daysGranted;
+  final String note;
+  final int atMs;
+
+  String get kindLabel {
+    switch (kind) {
+      case 'partial':
+        return 'Partial';
+      case 'grace':
+        return 'Grace';
+      case 'adjust':
+        return 'Time adjust';
+      default:
+        return 'Paid in full';
+    }
+  }
+
+  String get dateLabel => CustomerAccount.when(atMs);
+
+  String get amountLabel => CustomerAccount.ec(amount);
+
+  String get daysLabel {
+    if (daysGranted == 0) return 'No days added';
+    if (daysGranted == 1) return '1 day granted';
+    if (daysGranted == -1) return '1 day removed';
+    if (daysGranted < 0) return '${daysGranted.abs()} days removed';
+    return '$daysGranted days granted';
+  }
+
+  factory PaymentRecord.from(String id, Map<String, dynamic> data) {
+    final rawKind = (data['kind'] as String?)?.trim() ?? 'full';
+    final kind = rawKind == 'partial' || rawKind == 'grace' || rawKind == 'adjust' ? rawKind : 'full';
+    return PaymentRecord(
+      id: id,
+      amount: (data['amount'] as num?)?.toDouble() ?? 0,
+      kind: kind,
+      daysGranted: (data['daysGranted'] as num?)?.toInt() ?? 0,
+      note: (data['note'] as String?)?.trim() ?? '',
+      atMs: (data['atMs'] as num?)?.toInt() ?? 0,
     );
   }
 }

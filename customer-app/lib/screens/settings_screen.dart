@@ -3,9 +3,15 @@ import '../models/customer.dart';
 import '../theme.dart';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.account, required this.onSignOut});
+  const SettingsScreen({
+    super.key,
+    required this.account,
+    required this.onPaymentHistory,
+    required this.onSignOut,
+  });
 
   final CustomerAccount account;
+  final VoidCallback onPaymentHistory;
   final VoidCallback onSignOut;
 
   String get _village {
@@ -38,7 +44,16 @@ class SettingsScreen extends StatelessWidget {
           _row('Village / address', _village.isEmpty ? 'Not set' : _village),
           _row('Days left', '$days'),
           _row('Plan', plan),
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.receipt_long_outlined, color: GnTheme.cyan),
+            title: const Text('Payment history', style: TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: const Text('What you paid, in EC dollars', style: TextStyle(color: Colors.white70)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: onPaymentHistory,
+          ),
+          const SizedBox(height: 16),
           OutlinedButton(
             onPressed: onSignOut,
             style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),

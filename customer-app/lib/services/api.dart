@@ -80,6 +80,18 @@ class GnApi {
     });
   }
 
+  Stream<List<PaymentRecord>> watchPayments(String customerId) {
+    return _db
+        .collection('customers')
+        .doc(customerId)
+        .collection('payments')
+        .orderBy('atMs', descending: true)
+        .snapshots()
+        .map(
+          (s) => s.docs.map((d) => PaymentRecord.from(d.id, d.data())).toList(),
+        );
+  }
+
   Stream<List<ChatLine>> watchChat(String customerId) {
     return _db
         .collection('customers')

@@ -10,6 +10,7 @@ class HomeScreen extends StatelessWidget {
     required this.onCall,
     required this.onVideoCall,
     required this.onIssue,
+    required this.onPayments,
     required this.onSettings,
   });
 
@@ -18,6 +19,7 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onCall;
   final VoidCallback onVideoCall;
   final VoidCallback onIssue;
+  final VoidCallback onPayments;
   final VoidCallback onSettings;
 
   Color get _tone {
@@ -163,6 +165,13 @@ class HomeScreen extends StatelessWidget {
             icon: const Icon(Icons.report_problem_outlined),
             style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
             label: const Text('Report a line problem'),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onPayments,
+            icon: const Icon(Icons.receipt_long_outlined),
+            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+            label: const Text('Payment history'),
           ),
         ],
       ),

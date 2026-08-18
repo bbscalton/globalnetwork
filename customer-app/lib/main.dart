@@ -13,6 +13,7 @@ import 'screens/call_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/issue_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/payment_history_screen.dart';
 import 'screens/pending_approval_screen.dart';
 import 'screens/registration_wizard.dart';
 import 'screens/settings_screen.dart';
@@ -261,9 +262,24 @@ class _GateState extends State<Gate> {
       onIssue: () {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => IssueScreen(api: api, customerId: account!.id)));
       },
+      onPayments: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => PaymentHistoryScreen(api: api, customerId: account!.id)),
+        );
+      },
       onSettings: () {
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => SettingsScreen(account: account!, onSignOut: () => signOut())),
+          MaterialPageRoute(
+            builder: (_) => SettingsScreen(
+              account: account!,
+              onPaymentHistory: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => PaymentHistoryScreen(api: api, customerId: account!.id)),
+                );
+              },
+              onSignOut: () => signOut(),
+            ),
+          ),
         );
       },
     );
