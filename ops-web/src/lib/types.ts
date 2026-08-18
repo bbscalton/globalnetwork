@@ -81,6 +81,10 @@ export type VoiceCall = {
   answeredAtMs?: number
   endedAtMs?: number
   endedBy?: 'customer' | 'owner' | string
+  videoActive?: boolean
+  offerFrom?: 'customer' | 'owner' | string
+  negotiationGen?: number
+  ownerVideoVisible?: boolean
 }
 
 export type DeskRole = 'owner' | 'pending' | 'rejected'

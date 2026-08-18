@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Customer, VoiceCall } from './lib/types'
 import * as repo from './lib/repo'
-import { createAudioPeer, mixCallRecorder, remoteStreamOf, stopStream, type MixRecorder } from './lib/webrtc'
+import { createAudioPeer, disableVideoOnPeer, enableVideoOnPeer, mixCallRecorder, remoteStreamOf, stopStream, type MixRecorder } from './lib/webrtc'
 import { initials } from './lib/desk'
 
 function clock(ms: number): string {
@@ -51,12 +51,17 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
   const [recording, setRecording] = useState(false)
   const [saving, setSaving] = useState(false)
   const [muted, setMuted] = useState(false)
+  const [videoOn, setVideoOn] = useState(false)
+  const [ownerCamOn, setOwnerCamOn] = useState(false)
+  const [videoBusy, setVideoBusy] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const incoming = !session && ringing[0] ? ringing[0] : null
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const localRef = useRef<MediaStream | null>(null)
-  const remoteEl = useRef<HTMLAudioElement | null>(null)
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
+  const localVideoRef = useRef<HTMLVideoElement | null>(null)
   const mixerRef = useRef<MixRecorder | null>(null)
   const recordStartedRef = useRef(0)
   const iceSeen = useRef(new Set<string>())
@@ -64,7 +69,28 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
   const iceUnsub = useRef<(() => void) | null>(null)
   const closingRef = useRef(false)
   const sessionRef = useRef<LiveSession | null>(null)
+  const appliedOfferGen = useRef(0)
+  const appliedAnswerGen = useRef(0)
+  const renegotiating = useRef(false)
   sessionRef.current = session
+
+  const bindRemote = (stream: MediaStream) => {
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = stream
+      void remoteAudioRef.current.play().catch(() => undefined)
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream
+      void remoteVideoRef.current.play().catch(() => undefined)
+    }
+  }
+
+  const bindLocalPreview = (stream: MediaStream | null) => {
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream?.getVideoTracks().length ? stream : null
+      if (stream?.getVideoTracks().length) void localVideoRef.current.play().catch(() => undefined)
+    }
+  }
 
   useEffect(() => {
     if (!incoming) return
@@ -87,9 +113,46 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
       setCall(row)
       if (!row || row.status === 'ended' || row.status === 'missed') {
         void teardown(false)
+        return
       }
+      setVideoOn(row.videoActive === true)
+      setOwnerCamOn(row.ownerVideoVisible === true)
+      if (phase !== 'in_call' || renegotiating.current) return
+      const pc = pcRef.current
+      if (!pc) return
+
+      void (async () => {
+        const gen = row.negotiationGen ?? 1
+        if (row.offerFrom === 'customer' && gen > appliedOfferGen.current && row.offerSdp) {
+          renegotiating.current = true
+          try {
+            await pc.setRemoteDescription({ type: 'offer', sdp: row.offerSdp })
+            const ans = await pc.createAnswer()
+            await pc.setLocalDescription(ans)
+            appliedOfferGen.current = gen
+            if (gen > 1) {
+              await repo.pushCallAnswer(session.customerId, session.callId, ans.sdp || '', gen)
+            }
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not refresh the call for video.')
+          } finally {
+            renegotiating.current = false
+          }
+        }
+        if (row.offerFrom === 'owner' && gen > appliedAnswerGen.current && row.answerSdp) {
+          renegotiating.current = true
+          try {
+            await pc.setRemoteDescription({ type: 'answer', sdp: row.answerSdp })
+            appliedAnswerGen.current = gen
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not connect video.')
+          } finally {
+            renegotiating.current = false
+          }
+        }
+      })()
     })
-  }, [session?.customerId, session?.callId])
+  }, [session?.customerId, session?.callId, phase])
 
   const teardown = async (notifyRemote: boolean) => {
     if (closingRef.current) return
@@ -118,15 +181,21 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
     waitingIce.current = []
     iceUnsub.current?.()
     iceUnsub.current = null
-    if (remoteEl.current) remoteEl.current.srcObject = null
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null
+    bindLocalPreview(null)
     if (notifyRemote && live) {
       await repo.hangupCall(live.customerId, live.callId, 'owner', call?.status === 'ringing' ? 'missed' : 'ended').catch(() => undefined)
     }
     setRecording(false)
     setMuted(false)
+    setVideoOn(false)
+    setOwnerCamOn(false)
     setPhase('idle')
     setSession(null)
     setCall(null)
+    appliedOfferGen.current = 0
+    appliedAnswerGen.current = 0
   }
 
   const answer = async (customer: Customer) => {
@@ -135,6 +204,8 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
     setError(null)
     setPhase('connecting')
     closingRef.current = false
+    appliedOfferGen.current = 0
+    appliedAnswerGen.current = 0
     setSession({ customerId: customer.id, callId, name: customer.name || customer.phone || 'Customer' })
     try {
       const iceServers = await repo.fetchIceServers()
@@ -152,10 +223,7 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
       }
       pc.ontrack = (event) => {
         const stream = event.streams[0] ?? new MediaStream([event.track])
-        if (remoteEl.current) {
-          remoteEl.current.srcObject = stream
-          void remoteEl.current.play().catch(() => undefined)
-        }
+        bindRemote(stream)
       }
       iceSeen.current.clear()
       iceUnsub.current?.()
@@ -188,6 +256,8 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
       const answerSdp = await pc.createAnswer()
       await pc.setLocalDescription(answerSdp)
       await repo.answerCall(customer.id, callId, answerSdp.sdp || '')
+      appliedOfferGen.current = 1
+      appliedAnswerGen.current = 1
       setPhase('in_call')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not answer the call.')
@@ -211,6 +281,61 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
       track.enabled = !next
     })
     setMuted(next)
+  }
+
+  const switchToVideo = async () => {
+    if (!session || phase !== 'in_call' || ownerCamOn || videoBusy) return
+    const pc = pcRef.current
+    const local = localRef.current
+    if (!pc || !local) return
+    setVideoBusy(true)
+    setError(null)
+    try {
+      await enableVideoOnPeer(pc, local)
+      bindLocalPreview(local)
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      const nextGen = (call?.negotiationGen ?? appliedOfferGen.current) + 1
+      await repo.pushCallOffer(session.customerId, session.callId, offer.sdp || '', nextGen, 'owner', true, true)
+      appliedOfferGen.current = nextGen
+      setVideoOn(true)
+      setOwnerCamOn(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not turn the camera on.')
+    } finally {
+      setVideoBusy(false)
+    }
+  }
+
+  const hideMyCamera = async () => {
+    if (!session || phase !== 'in_call' || !ownerCamOn || videoBusy) return
+    const pc = pcRef.current
+    const local = localRef.current
+    if (!pc || !local) return
+    setVideoBusy(true)
+    setError(null)
+    try {
+      await disableVideoOnPeer(pc, local)
+      bindLocalPreview(null)
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      const nextGen = (call?.negotiationGen ?? appliedOfferGen.current) + 1
+      await repo.pushCallOffer(
+        session.customerId,
+        session.callId,
+        offer.sdp || '',
+        nextGen,
+        'owner',
+        call?.videoActive === true,
+        false,
+      )
+      appliedOfferGen.current = nextGen
+      setOwnerCamOn(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not hide your camera.')
+    } finally {
+      setVideoBusy(false)
+    }
   }
 
   const toggleRecord = async () => {
@@ -246,11 +371,11 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
     await repo.setCallRecording(session.customerId, session.callId, true).catch(() => undefined)
   }
 
-  if (!incoming && !session) return <audio ref={remoteEl} autoPlay playsInline hidden />
+  if (!incoming && !session) return <audio ref={remoteAudioRef} autoPlay playsInline hidden />
 
   return (
     <>
-      <audio ref={remoteEl} autoPlay playsInline hidden />
+      <audio ref={remoteAudioRef} autoPlay playsInline hidden />
       {incoming && (
         <div className="call-toast incoming gn-pulse" role="alertdialog" aria-label="Incoming voice call">
           <span className="avatar">{initials(incoming.name)}</span>
@@ -271,18 +396,58 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
         </div>
       )}
       {session && (
-        <div className={`call-toast live ${recording ? 'is-rec' : ''}`}>
+        <div className={`call-toast live ${recording ? 'is-rec' : ''} ${videoOn ? 'has-video' : ''}`}>
+          {videoOn && (
+            <div className="call-video-stage">
+              <video ref={remoteVideoRef} className="call-remote-video" autoPlay playsInline />
+              {ownerCamOn && <video ref={localVideoRef} className="call-local-video" autoPlay playsInline muted />}
+            </div>
+          )}
           <span className="avatar">{initials(session.name)}</span>
           <div>
-            <p className="eyebrow">{phase === 'connecting' ? 'Connecting' : recording ? 'Recording this call' : 'Live voice call'}</p>
+            <p className="eyebrow">
+              {phase === 'connecting'
+                ? 'Connecting'
+                : recording
+                  ? 'Recording this call'
+                  : videoOn
+                    ? ownerCamOn
+                      ? 'Live video call'
+                      : 'Video call · your camera hidden'
+                    : 'Live voice call'}
+            </p>
             <strong>{session.name}</strong>
-            <div className="muted tiny">{phase === 'in_call' ? clock(elapsed) : 'Opening the line…'}{saving ? ' · saving recording' : ''}</div>
+            <div className="muted tiny">
+              {phase === 'in_call' ? clock(elapsed) : 'Opening the line…'}
+              {saving ? ' · saving recording' : ''}
+              {videoBusy ? ' · updating camera…' : ''}
+            </div>
             {error && <p className="fail tiny">{error}</p>}
           </div>
           <div className="call-actions">
             <button className="btn btn-ghost" type="button" disabled={phase !== 'in_call'} onClick={toggleMute}>
               {muted ? 'Unmute' : 'Mute'}
             </button>
+            {!ownerCamOn && (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                disabled={phase !== 'in_call' || videoBusy}
+                onClick={() => void switchToVideo()}
+              >
+                {videoOn ? 'Show my camera' : 'Switch to video'}
+              </button>
+            )}
+            {ownerCamOn && (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                disabled={phase !== 'in_call' || videoBusy}
+                onClick={() => void hideMyCamera()}
+              >
+                Hide my camera
+              </button>
+            )}
             <button
               className={`btn ${recording ? 'danger' : 'btn-ghost'}`}
               type="button"

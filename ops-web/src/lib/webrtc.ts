@@ -13,6 +13,30 @@ export async function createAudioPeer(iceServers: IceServer[]): Promise<{
   return { pc, local }
 }
 
+export async function enableVideoOnPeer(pc: RTCPeerConnection, local: MediaStream): Promise<void> {
+  if (local.getVideoTracks().some((track) => track.readyState === 'live')) return
+  const cam = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: false,
+  })
+  for (const track of cam.getVideoTracks()) {
+    local.addTrack(track)
+    pc.addTrack(track, local)
+  }
+}
+
+export async function disableVideoOnPeer(pc: RTCPeerConnection, local: MediaStream): Promise<void> {
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== 'video') continue
+    sender.track.stop()
+    await sender.replaceTrack(null)
+  }
+  for (const track of [...local.getVideoTracks()]) {
+    track.stop()
+    local.removeTrack(track)
+  }
+}
+
 export function stopStream(stream: MediaStream | null | undefined): void {
   stream?.getTracks().forEach((track) => track.stop())
 }

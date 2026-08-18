@@ -94,8 +94,8 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(['from', 'status', 'offerSdp', 'startedAtMs']);
         allow update: if isOwner()
           || (customerOwns(customerId) && customerApproved(customerId)
-            && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['status', 'endedAtMs', 'endedBy']));
+            && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['recordingUrl', 'recording', 'answeredAtMs', 'ownerVideoVisible']));
         allow delete: if isOwner();
 
         match /iceOffer/{iceId} {
@@ -106,7 +106,8 @@ service cloud.firestore {
         }
         match /iceAnswer/{iceId} {
           allow read: if isOwner() || customerOwns(customerId);
-          allow create: if isOwner() && request.resource.data.keys().hasAll(['candidate']);
+          allow create: if (isOwner() || (customerOwns(customerId) && customerApproved(customerId)))
+            && request.resource.data.keys().hasAll(['candidate']);
           allow update, delete: if false;
         }
       }

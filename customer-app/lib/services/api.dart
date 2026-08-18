@@ -268,15 +268,61 @@ class GnApi {
       'from': 'customer',
       'status': 'ringing',
       'offerSdp': offerSdp,
+      'offerFrom': 'customer',
+      'negotiationGen': 1,
+      'videoActive': false,
+      'ownerVideoVisible': false,
       'startedAtMs': DateTime.now().millisecondsSinceEpoch,
     });
     return ref.id;
+  }
+
+  Future<void> pushCallOffer({
+    required String customerId,
+    required String callId,
+    required String offerSdp,
+    required int negotiationGen,
+    required bool videoActive,
+  }) {
+    return _calls(customerId).doc(callId).update({
+      'offerSdp': offerSdp,
+      'negotiationGen': negotiationGen,
+      'offerFrom': 'customer',
+      'videoActive': videoActive,
+    });
+  }
+
+  Future<void> pushCallAnswer({
+    required String customerId,
+    required String callId,
+    required String answerSdp,
+    required int negotiationGen,
+  }) {
+    return _calls(customerId).doc(callId).update({
+      'answerSdp': answerSdp,
+      'negotiationGen': negotiationGen,
+    });
   }
 
   Stream<Map<String, dynamic>?> watchCall(String customerId, String callId) {
     return _calls(customerId).doc(callId).snapshots().map((snap) {
       if (!snap.exists || snap.data() == null) return null;
       return snap.data();
+    });
+  }
+
+  Future<void> addIceAnswer({
+    required String customerId,
+    required String callId,
+    required String candidate,
+    String? sdpMid,
+    int? sdpMLineIndex,
+  }) {
+    return _calls(customerId).doc(callId).collection('iceAnswer').add({
+      'candidate': candidate,
+      'createdAtMs': DateTime.now().millisecondsSinceEpoch,
+      if (sdpMid != null && sdpMid.isNotEmpty) 'sdpMid': sdpMid,
+      if (sdpMLineIndex != null) 'sdpMLineIndex': sdpMLineIndex,
     });
   }
 

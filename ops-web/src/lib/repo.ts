@@ -390,6 +390,10 @@ function asCall(id: string, data: Record<string, unknown>, customerId?: string):
     answeredAtMs: data.answeredAtMs == null ? undefined : Number(data.answeredAtMs),
     endedAtMs: data.endedAtMs == null ? undefined : Number(data.endedAtMs),
     endedBy: data.endedBy == null ? undefined : String(data.endedBy),
+    videoActive: data.videoActive === true,
+    offerFrom: String(data.offerFrom ?? 'customer') === 'owner' ? 'owner' : 'customer',
+    negotiationGen: Number(data.negotiationGen ?? 1),
+    ownerVideoVisible: data.ownerVideoVisible === true,
   }
 }
 
@@ -458,8 +462,34 @@ export async function answerCall(customerId: string, callId: string, answerSdp: 
     status: 'in_call',
     answerSdp,
     answeredAtMs: Date.now(),
+    negotiationGen: 1,
   })
   await updateDoc(doc(database, COL.customers, customerId), { chatAgentLive: true })
+}
+
+export async function pushCallOffer(
+  customerId: string,
+  callId: string,
+  offerSdp: string,
+  negotiationGen: number,
+  offerFrom: 'customer' | 'owner',
+  videoActive: boolean,
+  ownerVideoVisible: boolean,
+): Promise<void> {
+  await updateDoc(doc(requireDb(), COL.customers, customerId, COL.calls, callId), {
+    offerSdp,
+    negotiationGen,
+    offerFrom,
+    videoActive,
+    ownerVideoVisible,
+  })
+}
+
+export async function pushCallAnswer(customerId: string, callId: string, answerSdp: string, negotiationGen: number): Promise<void> {
+  await updateDoc(doc(requireDb(), COL.customers, customerId, COL.calls, callId), {
+    answerSdp,
+    negotiationGen,
+  })
 }
 
 export async function hangupCall(

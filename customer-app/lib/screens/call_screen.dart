@@ -20,9 +20,14 @@ class _CallScreenState extends State<CallScreen> {
   RTCPeerConnection? _pc;
   MediaStream? _local;
   final _remote = RTCVideoRenderer();
+  final _localPreview = RTCVideoRenderer();
   String? _callId;
   var _phase = 'Starting call…';
   var _recording = false;
+  var _videoOn = false;
+  var _ownerVideoVisible = false;
+  var _customerCamOn = false;
+  var _videoBusy = false;
   var _failed = false;
   var _hanging = false;
   var _cancelled = false;
@@ -34,12 +39,16 @@ class _CallScreenState extends State<CallScreen> {
   final _pendingRemoteIce = <RTCIceCandidate>[];
   final _pendingLocalIce = <RTCIceCandidate>[];
   var _remoteReady = false;
+  var _appliedOfferGen = 0;
+  var _appliedAnswerGen = 0;
+  var _renegotiating = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(() async {
       await _remote.initialize();
+      await _localPreview.initialize();
       await _start();
     }());
   }
@@ -53,6 +62,7 @@ class _CallScreenState extends State<CallScreen> {
     unawaited(_iceSub?.cancel());
     unawaited(_hangup(pop: false));
     unawaited(_remote.dispose());
+    unawaited(_localPreview.dispose());
     super.dispose();
   }
 
@@ -95,7 +105,7 @@ class _CallScreenState extends State<CallScreen> {
           ),
         );
       };
-      final offer = await pc.createOffer({'offerToReceiveAudio': true, 'offerToReceiveVideo': false});
+      final offer = await pc.createOffer({'offerToReceiveAudio': true, 'offerToReceiveVideo': true});
       await pc.setLocalDescription(offer);
       final callId = await widget.api.startVoiceCall(customerId: widget.customerId, offerSdp: offer.sdp ?? '');
       _callId = callId;
@@ -133,35 +143,86 @@ class _CallScreenState extends State<CallScreen> {
           data['sdpMid'] as String?,
           (data['sdpMLineIndex'] as num?)?.toInt(),
         );
-        if (!_remoteReady) {
+        if (!_remoteReady && _appliedAnswerGen == 0) {
           _pendingRemoteIce.add(ice);
           return;
         }
         unawaited(_pc?.addCandidate(ice));
       });
       _callSub = widget.api.watchCall(widget.customerId, callId).listen((data) async {
-        if (data == null || !mounted) return;
+        if (data == null || !mounted || _hanging) return;
         final status = (data['status'] as String?) ?? '';
         final recording = data['recording'] == true;
-        if (recording != _recording) setState(() => _recording = recording);
+        final videoActive = data['videoActive'] == true;
+        final ownerVideoVisible = data['ownerVideoVisible'] == true;
+        if (recording != _recording || videoActive != _videoOn || ownerVideoVisible != _ownerVideoVisible) {
+          setState(() {
+            _recording = recording;
+            _videoOn = videoActive;
+            _ownerVideoVisible = ownerVideoVisible;
+          });
+        }
         if (status == 'ended' || status == 'missed') {
           if (!_hanging) await _hangup(pop: true, notify: false);
           return;
         }
+        final gen = (data['negotiationGen'] as num?)?.toInt() ?? 1;
+        final offerFrom = (data['offerFrom'] as String?) ?? 'customer';
+        final offer = (data['offerSdp'] as String?) ?? '';
         final answer = (data['answerSdp'] as String?) ?? '';
-        if (answer.isNotEmpty && !_remoteReady) {
+
+        if (!_remoteReady && answer.isNotEmpty && offerFrom == 'customer' && gen == 1) {
           await pc.setRemoteDescription(RTCSessionDescription(answer, 'answer'));
           _remoteReady = true;
+          _appliedAnswerGen = 1;
+          _appliedOfferGen = 1;
           for (final ice in _pendingRemoteIce) {
             await pc.addCandidate(ice);
           }
           _pendingRemoteIce.clear();
           _ringTimeout?.cancel();
           _connectedAt = DateTime.now();
-          _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+          _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
             if (mounted) setState(() {});
           });
           if (mounted) setState(() => _phase = 'Connected');
+          return;
+        }
+
+        if (_remoteReady && !_renegotiating && offerFrom == 'owner' && gen > _appliedOfferGen && offer.isNotEmpty) {
+          _renegotiating = true;
+          try {
+            await pc.setRemoteDescription(RTCSessionDescription(offer, 'offer'));
+            final ans = await pc.createAnswer();
+            await pc.setLocalDescription(ans);
+            await widget.api.pushCallAnswer(
+              customerId: widget.customerId,
+              callId: callId,
+              answerSdp: ans.sdp ?? '',
+              negotiationGen: gen,
+            );
+            _appliedOfferGen = gen;
+            _appliedAnswerGen = gen;
+            if (mounted) setState(() => _videoOn = videoActive);
+          } catch (_) {
+            if (mounted) setState(() => _phase = 'Could not connect video from the desk.');
+          } finally {
+            _renegotiating = false;
+          }
+          return;
+        }
+
+        if (_remoteReady && !_renegotiating && offerFrom == 'customer' && gen > _appliedAnswerGen && answer.isNotEmpty) {
+          _renegotiating = true;
+          try {
+            await pc.setRemoteDescription(RTCSessionDescription(answer, 'answer'));
+            _appliedAnswerGen = gen;
+            if (mounted) setState(() => _videoOn = videoActive);
+          } catch (_) {
+            if (mounted) setState(() => _phase = 'Could not refresh video on this call.');
+          } finally {
+            _renegotiating = false;
+          }
         }
       });
     } catch (e) {
@@ -170,6 +231,43 @@ class _CallScreenState extends State<CallScreen> {
         _failed = true;
         _phase = e.toString().replaceFirst('Exception: ', '');
       });
+    }
+  }
+
+  Future<void> _switchToVideo() async {
+    if (!_remoteReady || _customerCamOn || _videoBusy || _hanging) return;
+    final pc = _pc;
+    final local = _local;
+    final callId = _callId;
+    if (pc == null || local == null || callId == null) return;
+    setState(() => _videoBusy = true);
+    try {
+      final cam = await navigator.mediaDevices.getUserMedia({'video': true, 'audio': false});
+      for (final track in cam.getVideoTracks()) {
+        await pc.addTrack(track, local);
+      }
+      _localPreview.srcObject = local;
+      final offer = await pc.createOffer({'offerToReceiveAudio': true, 'offerToReceiveVideo': true});
+      await pc.setLocalDescription(offer);
+      final nextGen = _appliedOfferGen + 1;
+      await widget.api.pushCallOffer(
+        customerId: widget.customerId,
+        callId: callId,
+        offerSdp: offer.sdp ?? '',
+        negotiationGen: nextGen,
+        videoActive: true,
+      );
+      _appliedOfferGen = nextGen;
+      if (mounted) {
+        setState(() {
+          _videoOn = true;
+          _customerCamOn = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _phase = 'Allow the camera to show video to the desk.');
+    } finally {
+      if (mounted) setState(() => _videoBusy = false);
     }
   }
 
@@ -214,30 +312,78 @@ class _CallScreenState extends State<CallScreen> {
       backgroundColor: const Color(0xFF050816),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const Text('Call desk'),
+        title: Text(_videoOn || _customerCamOn ? 'Video call' : 'Call desk'),
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
         child: Column(
           children: [
-            const Spacer(),
-            Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: GnTheme.cyan.withValues(alpha: 0.5)),
-                color: const Color(0xFF0B1F4A),
+            if (_videoOn || _customerCamOn) ...[
+              Expanded(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: ColoredBox(
+                        color: const Color(0xFF0B1F4A),
+                        child: _ownerVideoVisible
+                            ? RTCVideoView(_remote, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover)
+                            : const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.support_agent, size: 72, color: GnTheme.cyan),
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'GlobalNetwork desk',
+                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white70),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text('Voice support — camera off', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                      ),
+                    ),
+                    if (_customerCamOn)
+                      Positioned(
+                        right: 12,
+                        bottom: 12,
+                        width: 96,
+                        height: 128,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: ColoredBox(
+                            color: const Color(0xFF0B1F4A),
+                            child: RTCVideoView(_localPreview, mirror: true, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-              child: Icon(_failed ? Icons.call_end : Icons.phone_in_talk, size: 44, color: GnTheme.cyan),
-            ),
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
+            ] else ...[
+              const Spacer(),
+              Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: GnTheme.cyan.withValues(alpha: 0.5)),
+                  color: const Color(0xFF0B1F4A),
+                ),
+                child: Icon(_failed ? Icons.call_end : Icons.phone_in_talk, size: 44, color: GnTheme.cyan),
+              ),
+              const SizedBox(height: 24),
+            ],
             const Text('GlobalNetwork desk', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             Text(_phase, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, height: 1.4)),
             const SizedBox(height: 8),
             Text(_clock, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: GnTheme.cyan)),
-            SizedBox(width: 1, height: 1, child: RTCVideoView(_remote)),
+            if (!_videoOn) SizedBox(width: 1, height: 1, child: RTCVideoView(_remote)),
             if (_recording) ...[
               const SizedBox(height: 16),
               Container(
@@ -253,7 +399,16 @@ class _CallScreenState extends State<CallScreen> {
                 ),
               ),
             ],
-            const Spacer(),
+            if (!_videoOn && !_customerCamOn) const Spacer(),
+            if (_remoteReady && !_videoOn && !_customerCamOn && !_failed) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _videoBusy || _hanging ? null : () => unawaited(_switchToVideo()),
+                icon: const Icon(Icons.videocam),
+                label: Text(_videoBusy ? 'Turning camera on…' : 'Switch to video'),
+              ),
+            ],
+            const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: _hanging ? null : () => _hangup(),
               style: FilledButton.styleFrom(
