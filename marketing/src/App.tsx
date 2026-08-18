@@ -2,6 +2,10 @@ const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
 const APK =
   (import.meta.env.VITE_ANDROID_APK_URL as string | undefined) ||
   'https://globalnetwork-media.neuereatec.workers.dev/app/android.apk'
+const IPA =
+  (import.meta.env.VITE_IOS_IPA_URL as string | undefined) ||
+  'https://github.com/bbscalton/globalnetwork/releases/latest/download/GlobalNetwork.ipa'
+const TESTFLIGHT = (import.meta.env.VITE_IOS_TESTFLIGHT_URL as string | undefined)?.trim() || ''
 
 export default function App() {
   return (
@@ -14,11 +18,15 @@ export default function App() {
         <nav className="nav-links" aria-label="Section navigation">
           <a href="#product">Service</a>
           <a href="#how">How it works</a>
+          <a href="#download">Get the app</a>
           <a href="#plans">Plans</a>
         </nav>
         <div className="nav-ctas">
           <a className="btn btn-ghost" href={APK}>
-            Download Android app
+            Download Android
+          </a>
+          <a className="btn btn-ghost" href={IPA}>
+            Download iOS
           </a>
           <a className="btn btn-primary" href={OPS}>
             Owner desk
@@ -40,10 +48,17 @@ export default function App() {
             <a className="btn btn-primary btn-lg" href={APK}>
               Download Android app
             </a>
+            <a className="btn btn-ghost-on-dark btn-lg" href={IPA}>
+              Download iOS app
+            </a>
             <a className="btn btn-ghost-on-dark btn-lg" href={OPS}>
               Open owner desk
             </a>
           </div>
+          <p className="hero-note">
+            Android installs from the APK. iPhone cannot install a website IPA the same way — use TestFlight
+            when the owner publishes a link, or see Get the app.
+          </p>
         </div>
       </section>
 
@@ -59,7 +74,7 @@ export default function App() {
             ['1 · Apps', 'Owner web desk plus Flutter iOS & Android customer app.'],
             ['2 · Firebase', 'Auth, Firestore customers, Cloud Functions for extend-days, FCM alerts.'],
             ['3 · Cloudflare', 'Worker + R2 for issue photos, the Android APK download, D1 usage, and KV cache.'],
-            ['4 · Hosting', 'GitHub Pages marketing site and owner desk; Firebase Hosting as an optional mirror.'],
+            ['4 · Hosting', 'GitHub Pages marketing site and owner desk; unsigned iOS IPA on GitHub Releases.'],
           ].map(([title, body]) => (
             <article key={title} className="glass-card">
               <h3>{title}</h3>
@@ -90,6 +105,51 @@ export default function App() {
         </div>
       </section>
 
+      <section id="download" className="section">
+        <p className="eyebrow">Customer app</p>
+        <h2>Download Android or iOS</h2>
+        <p className="muted" style={{ maxWidth: 720, marginTop: '0.75rem' }}>
+          Same Flutter app for both phones. Android can install from this site. Apple does not allow a normal
+          iPhone to sideload an IPA from a website — Settings will block it unless the build is signed and
+          delivered through TestFlight or the App Store.
+        </p>
+        <div className="section-grid">
+          <article className="glass-card">
+            <h3>Android</h3>
+            <p className="muted" style={{ marginTop: '0.5rem' }}>
+              Tap the APK, open the file, and install. If Android asks, allow installs from the browser this
+              one time.
+            </p>
+            <a className="btn btn-primary" href={APK} style={{ marginTop: '1.1rem' }}>
+              Download Android APK
+            </a>
+          </article>
+          <article className="glass-card">
+            <h3>iPhone</h3>
+            <p className="muted" style={{ marginTop: '0.5rem' }}>
+              Install on the phone with TestFlight when a public link is available. The IPA below is an
+              unsigned CI build for Mac / Xcode / archival — it will not install like an APK on a stock
+              iPhone.
+            </p>
+            <div className="download-actions">
+              {TESTFLIGHT ? (
+                <a className="btn btn-primary" href={TESTFLIGHT}>
+                  Install on iPhone (TestFlight)
+                </a>
+              ) : (
+                <p className="muted small">
+                  TestFlight is not published yet. Ask the owner at neuereatec@gmail.com for an invite when
+                  it is ready.
+                </p>
+              )}
+              <a className="btn btn-ghost" href={IPA}>
+                Download iOS IPA
+              </a>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section id="plans" className="section">
         <p className="eyebrow">Starter packages</p>
         <h2>15 / 30 / 90 days</h2>
@@ -110,7 +170,7 @@ export default function App() {
       </section>
 
       <footer className="site-footer">
-        GlobalNetwork · Antigua · EC dollars · Download the Android app from Cloudflare R2
+        GlobalNetwork · Antigua · EC dollars · Android APK on Cloudflare R2 · iOS IPA on GitHub Releases
       </footer>
     </div>
   )

@@ -45,6 +45,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GlobalNetwork uses your location so a technician can find the installation village. Coordinates stay off the address line — we store the place name and a map pin.</string>
 	<key>NSCameraUsageDescription</key>

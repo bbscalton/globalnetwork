@@ -1,0 +1,114 @@
+name: Build customer apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'customer-app/**'
+      - '.github/workflows/build-customer-apps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: customer-apps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build Android APK
+        working-directory: customer-app
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: customer-app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  ios:
+    runs-on: macos-14
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build unsigned iOS IPA
+        working-directory: customer-app
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter build ios --release --no-codesign
+          APP="build/ios/iphoneos/Runner.app"
+          test -d "$APP"
+          STAGE="build/ios/ipa-unsigned"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE/Payload"
+          ditto "$APP" "$STAGE/Payload/Runner.app"
+          (cd "$STAGE" && zip -qry GlobalNetwork.ipa Payload)
+          ls -lh "$STAGE/GlobalNetwork.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: customer-app/build/ios/ipa-unsigned/GlobalNetwork.ipa
+          if-no-files-found: error
+
+  release:
+    needs: [android, ios]
+    if: always() && github.ref == 'refs/heads/main' && (needs.android.result == 'success' || needs.ios.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Normalize names
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          if [ -f dist/app-release.apk ]; then mv dist/app-release.apk dist/GlobalNetwork.apk; fi
+          ls -la dist
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          files=()
+          if [ -f dist/GlobalNetwork.apk ]; then files+=(dist/GlobalNetwork.apk); fi
+          if [ -f dist/GlobalNetwork.ipa ]; then files+=(dist/GlobalNetwork.ipa); fi
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No app artifacts to publish"
+            exit 1
+          fi
+          notes="Android APK: tap to download, then install (allow unknown sources if asked). iOS IPA: unsigned CI build with no Apple Developer certificate in this repo. A stock iPhone will not install this file from the website the way Android installs an APK. Use TestFlight or the App Store for a normal iPhone install. This IPA is for Xcode, archival, or a later signed upload."
+          gh release create "customer-app-${{ github.run_number }}" "${files[@]}" \
+            --title "Customer app build ${{ github.run_number }}" \
+            --notes "$notes" \
+            --latest

@@ -47,6 +47,9 @@ jobs:
           VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
           VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
           VITE_GITHUB_REPO_URL: https://github.com/bbscalton/globalnetwork
+          VITE_ANDROID_APK_URL: https://globalnetwork-media.neuereatec.workers.dev/app/android.apk
+          VITE_IOS_IPA_URL: https://github.com/bbscalton/globalnetwork/releases/latest/download/GlobalNetwork.ipa
+          VITE_IOS_TESTFLIGHT_URL: ${{ secrets.VITE_IOS_TESTFLIGHT_URL }}
         run: |
           npm ci
           npm run build

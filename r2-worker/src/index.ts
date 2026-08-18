@@ -260,16 +260,25 @@ function isKycKey(key: string): boolean {
 }
 
 const APP_APK_KEY = "orgs/globalnetwork/app/globalnetwork-customer.apk";
+const APP_IPA_KEY = "orgs/globalnetwork/app/globalnetwork-customer.ipa";
 
-function apkHeaders(size: number): Headers {
+function binaryHeaders(size: number, contentType: string, filename: string): Headers {
   const headers = new Headers();
   headers.set("access-control-allow-origin", "*");
-  headers.set("content-type", "application/vnd.android.package-archive");
-  headers.set("content-disposition", 'attachment; filename="GlobalNetwork.apk"');
+  headers.set("content-type", contentType);
+  headers.set("content-disposition", `attachment; filename="${filename}"`);
   headers.set("cache-control", "public, max-age=300");
   headers.set("accept-ranges", "bytes");
   headers.set("content-length", String(size));
   return headers;
+}
+
+function apkHeaders(size: number): Headers {
+  return binaryHeaders(size, "application/vnd.android.package-archive", "GlobalNetwork.apk");
+}
+
+function ipaHeaders(size: number): Headers {
+  return binaryHeaders(size, "application/octet-stream", "GlobalNetwork.ipa");
 }
 
 export default {
@@ -297,6 +306,17 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       const obj = await env.MEDIA_BUCKET.get(APP_APK_KEY);
       if (!obj) return cors({ error: "Android app is not published yet." }, 404);
       return new Response(obj.body, { headers: apkHeaders(obj.size) });
+    }
+
+    if (path === "/app/ios.ipa" || path === "/app/globalnetwork.ipa") {
+      if (request.method === "HEAD") {
+        const meta = await env.MEDIA_BUCKET.head(APP_IPA_KEY);
+        if (!meta) return cors({ error: "iOS app is not published yet." }, 404);
+        return new Response(null, { headers: ipaHeaders(meta.size) });
+      }
+      const obj = await env.MEDIA_BUCKET.get(APP_IPA_KEY);
+      if (!obj) return cors({ error: "iOS app is not published yet." }, 404);
+      return new Response(obj.body, { headers: ipaHeaders(obj.size) });
     }
 
     if (path === "/health") {
