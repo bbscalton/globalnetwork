@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "gn.globalnetwork.desk",
+    "sha256_cert_fingerprints": [
+      "18:F3:9F:96:9E:F8:1A:06:95:95:13:F1:37:0B:FC:F7:FE:8B:B7:DA:02:07:44:6B:DF:0E:5E:0E:DA:51:F2:DC"
+    ]
+  }
+}]

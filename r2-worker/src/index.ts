@@ -260,6 +260,7 @@ function isKycKey(key: string): boolean {
 }
 
 const APP_APK_KEY = "orgs/globalnetwork/app/globalnetwork-customer.apk";
+const DESK_APK_KEY = "orgs/globalnetwork/app/globalnetwork-desk.apk";
 const APP_IPA_KEY = "orgs/globalnetwork/app/globalnetwork-customer.ipa";
 
 function binaryHeaders(size: number, contentType: string, filename: string): Headers {
@@ -307,6 +308,10 @@ function apkHeaders(size: number): Headers {
   return binaryHeaders(size, "application/vnd.android.package-archive", "GlobalNetwork.apk");
 }
 
+function deskApkHeaders(size: number): Headers {
+  return binaryHeaders(size, "application/vnd.android.package-archive", "GlobalNetwork-Desk.apk");
+}
+
 function ipaHeaders(size: number): Headers {
   return binaryHeaders(size, "application/octet-stream", "GlobalNetwork.ipa");
 }
@@ -334,6 +339,16 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         APP_APK_KEY,
         apkHeaders,
         "Android app is not published yet.",
+      );
+    }
+
+    if (path === "/app/desk.apk" || path === "/app/owner.apk") {
+      return serveAppFile(
+        request,
+        env,
+        DESK_APK_KEY,
+        deskApkHeaders,
+        "Owner desk Android app is not published yet.",
       );
     }
 

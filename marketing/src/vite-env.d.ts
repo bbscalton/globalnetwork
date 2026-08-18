@@ -14,6 +14,7 @@ interface ImportMetaEnv {
   readonly VITE_CUSTOMER_WEB_URL?: string
   readonly VITE_MARKETING_URL?: string
   readonly VITE_ANDROID_APK_URL?: string
+  readonly VITE_DESK_APK_URL?: string
   readonly VITE_IOS_IPA_URL?: string
   readonly VITE_IOS_TESTFLIGHT_URL?: string
   readonly VITE_ORG_ID?: string

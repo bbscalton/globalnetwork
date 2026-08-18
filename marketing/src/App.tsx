@@ -4,6 +4,9 @@ const WEB_APP =
 const APK =
   (import.meta.env.VITE_ANDROID_APK_URL as string | undefined) ||
   'https://globalnetwork-media.neuereatec.workers.dev/app/android.apk'
+const DESK_APK =
+  (import.meta.env.VITE_DESK_APK_URL as string | undefined) ||
+  'https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk'
 const IPA =
   (import.meta.env.VITE_IOS_IPA_URL as string | undefined) ||
   'https://github.com/bbscalton/globalnetwork/releases/latest/download/GlobalNetwork.ipa'
@@ -21,6 +24,7 @@ export default function App() {
           <a href="#product">Service</a>
           <a href="#how">How it works</a>
           <a href="#download">Get the app</a>
+          <a href="#owner-desk">Owner desk</a>
           <a href="#plans">Plans</a>
         </nav>
         <div className="nav-ctas">
@@ -28,13 +32,16 @@ export default function App() {
             Open web app
           </a>
           <a className="btn btn-ghost" href={APK}>
-            Download Android
+            Download customer app
           </a>
           <a className="btn btn-ghost" href={IPA}>
             Download iOS
           </a>
+          <a className="btn btn-ghost" href={DESK_APK}>
+            Download owner desk
+          </a>
           <a className="btn btn-primary" href={OPS}>
-            Owner desk
+            Open owner desk
           </a>
         </div>
       </header>
@@ -54,18 +61,21 @@ export default function App() {
               Open web app
             </a>
             <a className="btn btn-ghost-on-dark btn-lg" href={APK}>
-              Download Android app
+              Download customer app
             </a>
             <a className="btn btn-ghost-on-dark btn-lg" href={IPA}>
               Download iOS app
+            </a>
+            <a className="btn btn-ghost-on-dark btn-lg" href={DESK_APK}>
+              Download owner desk
             </a>
             <a className="btn btn-ghost-on-dark btn-lg" href={OPS}>
               Open owner desk
             </a>
           </div>
           <p className="hero-note">
-            Use the web app in the browser, or install Android from the APK. iPhone cannot install a website
-            IPA the same way — use TestFlight when the owner publishes a link, or see Get the app.
+            Customers: use the web app or the customer Android APK. The owner desk APK is a separate app
+            for neuereatec / desk owners only — it does not replace the customer APK.
           </p>
         </div>
       </section>
@@ -79,9 +89,9 @@ export default function App() {
         </p>
         <div className="section-grid">
           {[
-            ['1 · Apps', 'Owner web desk plus Flutter customer app on web, Android, and iOS.'],
+            ['1 · Apps', 'Owner web desk (and Desk Android TWA) plus Flutter customer app on web, Android, and iOS.'],
             ['2 · Firebase', 'Auth, Firestore customers, Cloud Functions for extend-days, FCM alerts.'],
-            ['3 · Cloudflare', 'Worker + R2 for issue photos, the Android APK download, D1 usage, and KV cache.'],
+            ['3 · Cloudflare', 'Worker + R2 for issue photos, customer and owner-desk APK downloads, D1 usage, and KV cache.'],
             ['4 · Hosting', 'GitHub Pages marketing site, owner desk, and customer web app; unsigned iOS IPA on GitHub Releases.'],
           ].map(([title, body]) => (
             <article key={title} className="glass-card">
@@ -118,9 +128,9 @@ export default function App() {
         <h2>Open on the web, or download Android / iOS</h2>
         <p className="muted" style={{ maxWidth: 720, marginTop: '0.75rem' }}>
           Same Flutter app in the browser, on Android, and on iPhone. The web app is hosted on this site.
-          Android can also install from the APK. Apple does not allow a normal iPhone to sideload an IPA from
-          a website — Settings will block it unless the build is signed and delivered through TestFlight or
-          the App Store.
+          Android can also install from the customer APK. This is not the owner desk. Apple does not allow a
+          normal iPhone to sideload an IPA from a website — Settings will block it unless the build is signed
+          and delivered through TestFlight or the App Store.
         </p>
         <div className="section-grid">
           <article className="glass-card">
@@ -134,14 +144,14 @@ export default function App() {
             </a>
           </article>
           <article className="glass-card">
-            <h3>Android</h3>
+            <h3>Android (customer)</h3>
             <p className="muted" style={{ marginTop: '0.5rem' }}>
-              Tap the APK, open the file, and install. If Android asks, allow installs from the browser this
-              one time. If an older GlobalNetwork app is already installed, uninstall it first, then install
-              this file (64-bit phones).
+              Customer app for subscribers. Tap the APK, open the file, and install. If Android asks, allow
+              installs from the browser this one time. If an older customer GlobalNetwork app is already
+              installed, uninstall it first, then install this file (64-bit phones).
             </p>
             <a className="btn btn-primary" href={APK} style={{ marginTop: '1.1rem' }}>
-              Download Android APK
+              Download customer APK
             </a>
           </article>
           <article className="glass-card">
@@ -170,6 +180,35 @@ export default function App() {
         </div>
       </section>
 
+      <section id="owner-desk" className="section">
+        <p className="eyebrow">Owner only</p>
+        <h2>Download owner desk (Android)</h2>
+        <p className="muted" style={{ maxWidth: 720, marginTop: '0.75rem' }}>
+          GlobalNetwork Desk is a separate Android app for the Antigua owner desk — roster, chat, extend,
+          settings. It is not the customer APK and can be installed beside it. The app is a Chrome Trusted
+          Web Activity around the live desk at /ops/, so Google sign-in uses Chrome instead of a system
+          WebView.
+        </p>
+        <div className="section-grid">
+          <article className="glass-card">
+            <h3>Android (owner desk)</h3>
+            <p className="muted" style={{ marginTop: '0.5rem' }}>
+              Package name gn.globalnetwork.desk. Install on a 64-bit phone, allow unknown sources if asked,
+              then sign in as neuereatec@gmail.com or another approved desk owner. Uninstall any previous
+              Desk APK with this package name first if the installer blocks an update.
+            </p>
+            <div className="download-actions">
+              <a className="btn btn-primary" href={DESK_APK}>
+                Download owner desk APK
+              </a>
+              <a className="btn btn-ghost" href={OPS}>
+                Open owner desk in browser
+              </a>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section id="plans" className="section">
         <p className="eyebrow">Starter packages</p>
         <h2>15 / 30 / 90 days</h2>
@@ -190,8 +229,8 @@ export default function App() {
       </section>
 
       <footer className="site-footer">
-        GlobalNetwork · Antigua · EC dollars · Web app on GitHub Pages · Android APK on Cloudflare R2 · iOS IPA
-        on GitHub Releases
+        GlobalNetwork · Antigua · EC dollars · Web app on GitHub Pages · Customer and owner-desk Android APKs
+        on Cloudflare R2 · iOS IPA on GitHub Releases
       </footer>
     </div>
   )
