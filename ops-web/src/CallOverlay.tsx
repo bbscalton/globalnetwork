@@ -430,7 +430,7 @@ export function CallOverlay({ customers }: { customers: Customer[] }) {
             </button>
             {!ownerCamOn && (
               <button
-                className="btn btn-ghost"
+                className="btn btn-primary"
                 type="button"
                 disabled={phase !== 'in_call' || videoBusy}
                 onClick={() => void switchToVideo()}

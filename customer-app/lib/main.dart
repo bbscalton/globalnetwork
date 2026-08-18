@@ -252,6 +252,11 @@ class _GateState extends State<Gate> {
       onCall: () {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => CallScreen(api: api, customerId: account!.id)));
       },
+      onVideoCall: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => CallScreen(api: api, customerId: account!.id, preferVideo: true)),
+        );
+      },
       onIssue: () {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => IssueScreen(api: api, customerId: account!.id)));
       },

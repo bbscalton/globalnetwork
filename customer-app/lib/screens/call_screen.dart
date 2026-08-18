@@ -7,10 +7,11 @@ import '../services/api.dart';
 import '../theme.dart';
 
 class CallScreen extends StatefulWidget {
-  const CallScreen({super.key, required this.api, required this.customerId});
+  const CallScreen({super.key, required this.api, required this.customerId, this.preferVideo = false});
 
   final GnApi api;
   final String customerId;
+  final bool preferVideo;
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -130,7 +131,7 @@ class _CallScreenState extends State<CallScreen> {
       }
       _pendingLocalIce.clear();
       if (!mounted) return;
-      setState(() => _phase = 'Calling the GlobalNetwork desk…');
+      setState(() => _phase = widget.preferVideo ? 'Video calling the GlobalNetwork desk…' : 'Calling the GlobalNetwork desk…');
       _ringTimeout = Timer(const Duration(seconds: 50), () {
         if (_connectedAt != null || _hanging) return;
         unawaited(_hangup(status: 'missed'));
@@ -171,11 +172,11 @@ class _CallScreenState extends State<CallScreen> {
         final offer = (data['offerSdp'] as String?) ?? '';
         final answer = (data['answerSdp'] as String?) ?? '';
 
-        if (!_remoteReady && answer.isNotEmpty && offerFrom == 'customer' && gen == 1) {
+        if (!_remoteReady && answer.isNotEmpty && (status == 'in_call' || gen == 1)) {
           await pc.setRemoteDescription(RTCSessionDescription(answer, 'answer'));
           _remoteReady = true;
-          _appliedAnswerGen = 1;
-          _appliedOfferGen = 1;
+          _appliedAnswerGen = gen;
+          _appliedOfferGen = gen;
           for (final ice in _pendingRemoteIce) {
             await pc.addCandidate(ice);
           }
@@ -185,7 +186,8 @@ class _CallScreenState extends State<CallScreen> {
           _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
             if (mounted) setState(() {});
           });
-          if (mounted) setState(() => _phase = 'Connected');
+          if (mounted) setState(() => _phase = widget.preferVideo ? 'Connected · turning camera on…' : 'Connected');
+          if (widget.preferVideo) unawaited(_switchToVideo());
           return;
         }
 
@@ -312,7 +314,7 @@ class _CallScreenState extends State<CallScreen> {
       backgroundColor: const Color(0xFF050816),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: Text(_videoOn || _customerCamOn ? 'Video call' : 'Call desk'),
+        title: Text(widget.preferVideo || _videoOn || _customerCamOn ? 'Video call' : 'Call desk'),
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
@@ -400,12 +402,23 @@ class _CallScreenState extends State<CallScreen> {
               ),
             ],
             if (!_videoOn && !_customerCamOn) const Spacer(),
-            if (_remoteReady && !_videoOn && !_customerCamOn && !_failed) ...[
+            if (!_failed && !_customerCamOn) ...[
               const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _videoBusy || _hanging ? null : () => unawaited(_switchToVideo()),
+              FilledButton.icon(
+                onPressed: !_remoteReady || _videoBusy || _hanging ? null : () => unawaited(_switchToVideo()),
                 icon: const Icon(Icons.videocam),
-                label: Text(_videoBusy ? 'Turning camera on…' : 'Switch to video'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF0EA5E9),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 22),
+                ),
+                label: Text(
+                  _videoBusy
+                      ? 'Turning camera on…'
+                      : _remoteReady
+                          ? 'Switch to video'
+                          : 'Video after the desk answers',
+                ),
               ),
             ],
             const SizedBox(height: 12),

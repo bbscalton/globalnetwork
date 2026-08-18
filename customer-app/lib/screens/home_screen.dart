@@ -8,6 +8,7 @@ class HomeScreen extends StatelessWidget {
     required this.account,
     required this.onChat,
     required this.onCall,
+    required this.onVideoCall,
     required this.onIssue,
     required this.onSignOut,
   });
@@ -15,6 +16,7 @@ class HomeScreen extends StatelessWidget {
   final CustomerAccount account;
   final VoidCallback onChat;
   final VoidCallback onCall;
+  final VoidCallback onVideoCall;
   final VoidCallback onIssue;
   final VoidCallback onSignOut;
 
@@ -141,6 +143,17 @@ class HomeScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
             label: const Text('Call the desk'),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: onVideoCall,
+            icon: const Icon(Icons.videocam),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF0369A1),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            label: const Text('Video call'),
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(

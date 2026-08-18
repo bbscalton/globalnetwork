@@ -85,6 +85,24 @@ class _IssueScreenState extends State<IssueScreen> {
               icon: const Icon(Icons.phone_in_talk),
               label: const Text('Or call the desk'),
             ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: busy
+                  ? null
+                  : () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CallScreen(
+                            api: widget.api,
+                            customerId: widget.customerId,
+                            preferVideo: true,
+                          ),
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.videocam),
+              label: const Text('Or start a video call'),
+            ),
             if (status != null) Text(status!, style: const TextStyle(color: Colors.redAccent)),
           ],
         ),

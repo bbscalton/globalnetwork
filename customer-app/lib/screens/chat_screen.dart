@@ -330,6 +330,17 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
             },
             icon: const Icon(Icons.phone_in_talk, color: GnTheme.cyan),
           ),
+          IconButton(
+            tooltip: 'Video call',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => CallScreen(api: widget.api, customerId: widget.customerId, preferVideo: true),
+                ),
+              );
+            },
+            icon: const Icon(Icons.videocam, color: GnTheme.cyan),
+          ),
         ],
       ),
       body: DecoratedBox(
