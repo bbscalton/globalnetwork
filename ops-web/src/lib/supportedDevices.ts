@@ -384,6 +384,28 @@ export const SUPPORTED_DEVICES: SupportedDevice[] = [
     },
   },
   {
+    id: 'er7206',
+    brand: 'TP-Link Omada',
+    name: 'ER7206 Omada gigabit VPN router',
+    sku: 'ER7206 (TL-ER7206)',
+    family: 'omada',
+    role: 'gateway',
+    recommended: true,
+    canSuspend: true,
+    streetCheap: 'Omada site gateway · ~US$120–150',
+    manageVia: 'Omada SDN / Omada Cloud',
+    notes:
+      'Stronger Omada gateway than ER605 (typically more WAN ports). Use as a site gateway, not a cheap customer CPE. Still the TP-Link path with a real ISP-style API — unlike TL-WR841N v14. Wired only. Pair with an Omada EAP if you need Wi-Fi.',
+    tags: ['tplink', 'tp-link', 'omada', 'er7206', 'tl-er7206', 'gateway'],
+    caps: {
+      suspend: { level: 'yes', detail: 'Omada: disable WAN, PPPoE, or firewall when the site is controller-managed' },
+      passwords: { level: 'partial', detail: 'Admin password yes. No Wi-Fi on the ER7206' },
+      reboot: { level: 'yes', detail: 'Omada / device reboot' },
+      lanConfig: { level: 'partial', detail: 'DNS, VPN, ACL, port forwards yes. No SSID' },
+      powerOff: { level: 'no', detail: 'Reboot or WAN disable only' },
+    },
+  },
+  {
     id: 'eap225',
     brand: 'TP-Link Omada',
     name: 'EAP225',

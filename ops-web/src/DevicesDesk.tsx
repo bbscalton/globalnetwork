@@ -111,7 +111,7 @@ export function DevicesDesk() {
           </h2>
           <p>
             No ISP API — local web UI only. You cannot remotely suspend a subscriber on this box. Issue a hAP
-            lite, hEX, Omada ER605, or airMAX CPE instead.
+            lite, hEX, Omada ER605 / ER7206, or airMAX CPE instead.
           </p>
         </section>
       )}
