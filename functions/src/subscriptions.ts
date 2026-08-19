@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DAY_MS, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireOwner, sendToOwners, sendToToken, writeAudit } from "./context";
+import { customerByUid, customersWithEmail, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
 
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
 
@@ -96,6 +97,9 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const name = String(request.data?.name ?? "").trim();
   if (!name) throw new HttpsError("invalid-argument", "Name is required.");
+  const email = normalizeEmail(request.data?.email);
+  const phone = String(request.data?.phone ?? "").trim();
+  const address = String(request.data?.address ?? "").trim();
   const planId = String(request.data?.planId ?? "");
   let planName = "";
   let planDays = 30;
@@ -108,13 +112,42 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
       feeAmount = Number(plan.get("feeAmount") ?? 0);
     }
   }
+
+  if (email) {
+    const matches = await customersWithEmail(email);
+    if (matches.length) {
+      const keeper = pickCustomerKeeper(matches);
+      const patch: Record<string, unknown> = { email, updatedAtMs: Date.now() };
+      if (!String(keeper.get("name") ?? "").trim()) patch.name = name;
+      if (!String(keeper.get("phone") ?? "").trim() && phone) patch.phone = phone;
+      if (!String(keeper.get("address") ?? "").trim() && address) patch.address = address;
+      if (!String(keeper.get("planId") ?? "").trim() && planId) {
+        patch.planId = planId;
+        patch.planName = planName;
+        patch.planDays = planDays;
+        patch.feeAmount = feeAmount;
+        if (Number(keeper.get("balanceDue") ?? 0) === 0 && Number(keeper.get("paidAmount") ?? 0) === 0) {
+          patch.balanceDue = feeAmount;
+        }
+      }
+      await keeper.ref.update(patch);
+      await writeAudit({
+        action: "create_customer_attached",
+        adminEmail: owner.email,
+        targetUid: keeper.id,
+        detail: email,
+      });
+      return { customerId: keeper.id, existing: true };
+    }
+  }
+
   const ref = db.collection("customers").doc();
   await ref.set({
     orgId: String(request.data?.orgId ?? DEFAULT_ORG_ID),
     name,
-    phone: String(request.data?.phone ?? "").trim(),
-    email: String(request.data?.email ?? "").trim().toLowerCase(),
-    address: String(request.data?.address ?? "").trim(),
+    phone,
+    email,
+    address,
     status: "expired",
     planId,
     planName,
@@ -132,7 +165,7 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
     approvalStatus: "approved",
   });
   await writeAudit({ action: "create_customer", adminEmail: owner.email, targetUid: ref.id, detail: name });
-  return { customerId: ref.id };
+  return { customerId: ref.id, existing: false };
 });
 
 export const extendSubscription = onCall(CALLABLE, async (request) => {
@@ -280,23 +313,34 @@ export const linkCustomerAccount = onCall(CALLABLE, async (request) => {
   try {
     const uid = request.auth?.uid;
     const claims = request.auth?.token as Record<string, unknown> | undefined;
-    const email = String(claims?.email ?? "").trim().toLowerCase();
+    const email = normalizeEmail(claims?.email);
     if (!uid || !email) {
       throw new HttpsError("unauthenticated", "Sign in with a Google or email account that has an email address.");
     }
-    const matches = await db.collection("customers").where("email", "==", email).limit(1).get();
-    if (!matches.empty) {
-      const snap = matches.docs[0];
-      const current = String(snap.get("approvalStatus") ?? "");
-      const patch: Record<string, unknown> = { uid, lastSeenMs: Date.now() };
+
+    const byUid = await customerByUid(uid);
+    const matches = await customersWithEmail(email);
+    const pool = [...matches];
+    if (byUid && !pool.some((doc) => doc.id === byUid.id)) pool.push(byUid);
+
+    if (pool.length) {
+      const keeper = pickCustomerKeeper(pool);
+      const current = String(keeper.get("approvalStatus") ?? "");
+      const patch: Record<string, unknown> = { uid, email, lastSeenMs: Date.now() };
       if (!current) {
-        const createdBy = String(snap.get("createdBy") ?? "");
-        const hasKyc = Boolean(snap.get("idPhotoUrl") || snap.get("kycSubmittedAtMs"));
+        const createdBy = String(keeper.get("createdBy") ?? "");
+        const hasKyc = Boolean(keeper.get("idPhotoUrl") || keeper.get("kycSubmittedAtMs"));
         patch.approvalStatus = createdBy === uid && !hasKyc ? "none" : "approved";
       }
-      await snap.ref.update(patch);
-      return { customerId: snap.id };
+      await keeper.ref.update(patch);
+      await Promise.all(
+        pool
+          .filter((doc) => doc.id !== keeper.id && String(doc.get("uid") ?? "") === uid)
+          .map((doc) => doc.ref.update({ uid: null, updatedAtMs: Date.now() })),
+      );
+      return { customerId: keeper.id };
     }
+
     const displayName = String(claims?.name ?? "").trim() || email.split("@")[0];
     const ref = db.collection("customers").doc();
     await ref.set({

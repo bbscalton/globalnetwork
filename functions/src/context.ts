@@ -26,9 +26,13 @@ function firebaseApp() {
 
 export const db = getFirestore(firebaseApp());
 
+export function normalizeEmail(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 export function requireAuth(request: CallableRequest): { uid: string; email: string } {
   const uid = request.auth?.uid;
-  const email = (request.auth?.token?.email as string | undefined) ?? "";
+  const email = normalizeEmail((request.auth?.token?.email as string | undefined) ?? "");
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
   return { uid, email };
 }

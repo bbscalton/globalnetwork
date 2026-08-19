@@ -5,6 +5,7 @@ import {
   CALLABLE,
   db,
   isFounderEmail,
+  normalizeEmail,
   requireAuth,
   requireOwner,
   sendToOwners,
@@ -13,10 +14,6 @@ import {
 } from "./context";
 
 type DeskRole = "owner" | "pending" | "rejected";
-
-function normalizeEmail(value: unknown): string {
-  return String(value ?? "").trim().toLowerCase();
-}
 
 async function memberByEmail(email: string) {
   const matches = await db.collection("deskMembers").where("email", "==", email).limit(1).get();

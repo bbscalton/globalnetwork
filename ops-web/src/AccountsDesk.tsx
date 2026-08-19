@@ -4,7 +4,7 @@ import { fmtWhen } from './lib/desk'
 import { useAuth } from './lib/authContext'
 import type { DeskInvite, DeskMember } from './lib/types'
 
-export function AccountsDesk() {
+export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
   const { user, member } = useAuth()
   const [members, setMembers] = useState<DeskMember[]>([])
   const [invites, setInvites] = useState<DeskInvite[]>([])
@@ -53,17 +53,19 @@ export function AccountsDesk() {
   }
 
   return (
-    <div className="desk">
-      <header className="desk-hero">
-        <div>
-          <p className="eyebrow">Access</p>
-          <h1>Manage account & roles</h1>
-          <p className="muted">
-            Google sign-in on this desk does not grant owner access by itself. Assign an owner email, or approve a
-            pending request after they sign in.
-          </p>
-        </div>
-      </header>
+    <div className={embedded ? 'settings-panel' : 'desk'}>
+      {!embedded && (
+        <header className="desk-hero">
+          <div>
+            <p className="eyebrow">Access</p>
+            <h1>Manage account & roles</h1>
+            <p className="muted">
+              Google sign-in on this desk does not grant owner access by itself. Assign an owner email, or approve a
+              pending request after they sign in.
+            </p>
+          </div>
+        </header>
+      )}
 
       {err && <p className="fail">{err}</p>}
       {msg && <p className="ok-text">{msg}</p>}

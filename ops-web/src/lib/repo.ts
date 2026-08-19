@@ -294,7 +294,7 @@ export async function createCustomer(input: {
   email: string
   address: string
   planId: string
-}): Promise<{ customerId: string }> {
+}): Promise<{ customerId: string; existing?: boolean }> {
   return callable('createCustomer', { ...input, orgId: ORG_ID })
 }
 
@@ -364,6 +364,20 @@ export async function deleteCustomer(customerId: string): Promise<void> {
   await callable('deleteCustomer', { customerId })
 }
 
+export async function deleteCustomers(ids: string[]): Promise<{ deleted: number; failed: number }> {
+  let deleted = 0
+  let failed = 0
+  for (const id of ids) {
+    try {
+      await deleteCustomer(id)
+      deleted += 1
+    } catch {
+      failed += 1
+    }
+  }
+  return { deleted, failed }
+}
+
 export async function clearCustomerChat(customerId: string): Promise<{ deleted: number }> {
   return callable('clearCustomerChat', { customerId })
 }
@@ -414,6 +428,7 @@ export type TidyAction =
   | 'purgeAuditLogs'
   | 'deleteRejectedCustomers'
   | 'deleteMediaMessages'
+  | 'mergeDuplicateEmails'
 
 export type TidyResult = {
   ok: boolean
@@ -421,6 +436,7 @@ export type TidyResult = {
   deleted: number
   scanned: number
   customersDeleted?: number
+  merged?: number
   olderThanDays?: number
   detail?: string
 }

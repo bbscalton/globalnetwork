@@ -184,6 +184,14 @@ label textarea { min-height: 4.5rem; resize: vertical; }
 .roster th, .roster td { text-align: left; padding: 0.85rem 1rem; border-bottom: 1px solid var(--line); }
 .roster tbody tr { cursor: pointer; }
 .roster tbody tr:hover { background: rgba(34, 211, 238, 0.06); }
+.roster th.roster-check, .roster td.roster-check { width: 2.4rem; padding-right: 0.2rem; }
+.roster td.roster-check, .roster td.roster-actions { cursor: default; }
+.roster-actions { width: 1%; white-space: nowrap; }
+.roster-bulk { display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center; }
+.btn-tiny { padding: 0.28rem 0.65rem; font-size: 0.75rem; border-radius: 9px; }
+.settings-tabs { margin: 0 0 1.05rem; }
+.settings-tabs .chip { display: inline-flex; align-items: center; gap: 0.4rem; }
+.settings-panel { display: grid; gap: 1rem; }
 .who { display: flex; gap: 0.7rem; align-items: center; }
 .avatar {
   width: 36px; height: 36px; border-radius: 50%;

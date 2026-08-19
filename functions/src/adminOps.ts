@@ -18,6 +18,7 @@ import {
   sendToToken,
   writeAudit,
 } from "./context";
+import { absorbCustomer, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
 
 export const DEFAULT_ORG_SETTINGS = {
   name: "GlobalNetwork",
@@ -48,6 +49,7 @@ const TIDY_ACTIONS = new Set([
   "purgeAuditLogs",
   "deleteRejectedCustomers",
   "deleteMediaMessages",
+  "mergeDuplicateEmails",
 ]);
 
 async function wipeQuery(target: Query, recursive = false): Promise<number> {
@@ -140,6 +142,51 @@ async function wipeMatching(
     }
     if (snap.size < 200) return total;
   }
+}
+
+async function loadAllCustomers(): Promise<QueryDocumentSnapshot[]> {
+  const docs: QueryDocumentSnapshot[] = [];
+  let last: QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let q: Query = db.collection("customers").orderBy(FieldPath.documentId()).limit(200);
+    if (last) q = q.startAfter(last);
+    const snap = await q.get();
+    if (snap.empty) break;
+    docs.push(...snap.docs);
+    last = snap.docs[snap.docs.length - 1];
+    if (snap.size < 200) break;
+  }
+  return docs;
+}
+
+async function mergeDuplicateEmails(): Promise<{ scanned: number; deleted: number; merged: number }> {
+  const docs = await loadAllCustomers();
+  const groups = new Map<string, QueryDocumentSnapshot[]>();
+  for (const doc of docs) {
+    const email = normalizeEmail(doc.get("email"));
+    if (!email) continue;
+    const current = String(doc.get("email") ?? "");
+    if (current !== email) {
+      await doc.ref.update({ email, updatedAtMs: Date.now() });
+    }
+    const list = groups.get(email) ?? [];
+    list.push(doc);
+    groups.set(email, list);
+  }
+
+  let deleted = 0;
+  let merged = 0;
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const keeper = pickCustomerKeeper(group);
+    const extras = group.filter((doc) => doc.id !== keeper.id);
+    for (const extra of extras) {
+      await absorbCustomer(keeper, extra);
+      deleted += 1;
+    }
+    merged += 1;
+  }
+  return { scanned: docs.length, deleted, merged };
 }
 
 async function mapCustomers(work: (ref: DocumentReference, data: DocumentData) => Promise<number>): Promise<{
@@ -588,6 +635,7 @@ export const tidyDesk = onCall(TIDY_TIMEOUT, async (request) => {
   let deleted = 0;
   let scanned = 0;
   let customersDeleted = 0;
+  let merged = 0;
   let detail = action;
 
   if (action === "purgeAuditLogs") {
@@ -660,6 +708,16 @@ export const tidyDesk = onCall(TIDY_TIMEOUT, async (request) => {
     scanned = result.scanned;
     deleted = result.deleted;
     detail = `${deleted} stale/rejected customers`;
+  } else if (action === "mergeDuplicateEmails") {
+    const result = await mergeDuplicateEmails();
+    scanned = result.scanned;
+    deleted = result.deleted;
+    customersDeleted = result.deleted;
+    merged = result.merged;
+    detail =
+      merged === 0
+        ? "No duplicate emails to merge"
+        : `Merged ${merged} email group${merged === 1 ? "" : "s"}, removed ${deleted} extra record${deleted === 1 ? "" : "s"}`;
   }
 
   await writeAudit({
@@ -669,5 +727,5 @@ export const tidyDesk = onCall(TIDY_TIMEOUT, async (request) => {
     detail,
   });
 
-  return { ok: true, action, deleted, scanned, customersDeleted, olderThanDays, detail };
+  return { ok: true, action, deleted, scanned, customersDeleted, merged, olderThanDays, detail };
 });

@@ -14,7 +14,6 @@ import { CallOverlay } from './CallOverlay'
 import { FieldMap } from './FieldMap'
 import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
-import { AccountsDesk } from './AccountsDesk'
 import { DevicesDesk } from './DevicesDesk'
 import { SettingsDesk } from './SettingsDesk'
 import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
@@ -202,16 +201,6 @@ function Shell({
             <div className="muted tiny">Owner desk</div>
           </div>
         </div>
-        <nav className="nav-owner" aria-label="Account and settings">
-          <p className="nav-label">Account &amp; settings</p>
-          <NavLink to="/accounts">Account &amp; roles</NavLink>
-          <NavLink to="/settings" className="nav-settings">
-            Settings
-            <span className="nav-gear" aria-hidden>
-              ⚙
-            </span>
-          </NavLink>
-        </nav>
         <NavLink to="/" end>
           Roster
           <span className="nav-count">{pulse.total}</span>
@@ -237,6 +226,7 @@ function Shell({
           Devices
           <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
         </NavLink>
+        <NavLink to="/settings">Settings</NavLink>
         <div className="side-pulse">
           <p>
             <b className="live-num">{pulse.active}</b> live
@@ -267,8 +257,8 @@ function Shell({
             element={<PlansDesk plans={plans} customers={customers} now={now} renewalWarnDays={warnDays} />}
           />
           <Route path="/devices" element={<DevicesDesk />} />
-          <Route path="/accounts" element={<AccountsDesk />} />
           <Route path="/settings" element={<SettingsDesk org={org} customers={customers} />} />
+          <Route path="/accounts" element={<Navigate to="/settings?tab=roles" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

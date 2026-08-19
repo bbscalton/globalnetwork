@@ -31,6 +31,7 @@ export function Board({
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', planId: '' })
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const rows = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -50,6 +51,63 @@ export function Board({
     })
   }, [customers, q, filter, now, renewalWarnDays])
 
+  const allVisibleSelected = rows.length > 0 && rows.every((c) => selected.has(c.id))
+
+  const toggleSelected = (id: string, on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const toggleAllVisible = (on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const c of rows) {
+        if (on) next.add(c.id)
+        else next.delete(c.id)
+      }
+      return next
+    })
+  }
+
+  const onDeleteOne = async (c: Customer) => {
+    if (!window.confirm(`Delete ${c.name}'s account, chat, tickets, and payments? This cannot be undone.`)) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      await repo.deleteCustomer(c.id)
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(c.id)
+        return next
+      })
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Could not delete customer')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const onDeleteSelected = async () => {
+    const ids = [...selected]
+    if (!ids.length) return
+    if (!window.confirm(`Delete ${ids.length} selected customer record${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      const result = await repo.deleteCustomers(ids)
+      setSelected(new Set())
+      if (result.failed) setMsg(`Deleted ${result.deleted}. ${result.failed} could not be deleted — deploy Cloud Functions if this keeps failing.`)
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Could not delete customers')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const onCreate = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
@@ -58,6 +116,7 @@ export function Board({
       const res = await repo.createCustomer(form)
       setCreating(false)
       setForm({ name: '', phone: '', email: '', address: '', planId: '' })
+      if (res.existing) setMsg('A customer with this email already exists. Opened that record instead of creating another.')
       navigate(`/c/${res.customerId}`)
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Could not create customer')
@@ -129,17 +188,37 @@ export function Board({
             </button>
           ))}
         </div>
+        {selected.size > 0 && (
+          <div className="roster-bulk">
+            <span className="muted tiny">{selected.size} selected</span>
+            <button className="btn danger" type="button" disabled={busy} onClick={() => void onDeleteSelected()}>
+              {busy ? 'Deleting…' : `Delete selected`}
+            </button>
+          </div>
+        )}
       </div>
+
+      {msg && <p className="fail">{msg}</p>}
 
       <div className="card table-card">
         <table className="roster">
           <thead>
             <tr>
+              <th className="roster-check">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  disabled={!rows.length}
+                  aria-label="Select all visible customers"
+                  onChange={(e) => toggleAllVisible(e.target.checked)}
+                />
+              </th>
               <th>Customer</th>
               <th>Plan</th>
               <th>Service</th>
               <th>Cycle</th>
               <th>Balance</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -147,6 +226,14 @@ export function Board({
               const left = repo.daysLeft(c.paidUntilMs, now)
               return (
                 <tr key={c.id} className="roster-row" onClick={() => navigate(`/c/${c.id}`)}>
+                  <td className="roster-check" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.id)}
+                      aria-label={`Select ${c.name}`}
+                      onChange={(e) => toggleSelected(c.id, e.target.checked)}
+                    />
+                  </td>
                   <td>
                     <div className="who">
                       <span className="avatar">{initials(c.name)}</span>
@@ -174,6 +261,16 @@ export function Board({
                     </div>
                   </td>
                   <td className={c.balanceDue > 0 ? 'warn-text' : ''}>{repo.formatEc(c.balanceDue)}</td>
+                  <td className="roster-actions" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="btn btn-ghost danger btn-tiny"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void onDeleteOne(c)}
+                    >
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               )
             })}

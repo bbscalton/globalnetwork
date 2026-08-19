@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DEFAULT_ORG_SETTINGS, type Customer, type OrgSettings } from './lib/types'
 import * as repo from './lib/repo'
+import { AccountsDesk } from './AccountsDesk'
 
 const RESET_PHRASE = 'RESET GLOBALNETWORK'
+type SettingsTab = 'roles' | 'desk' | 'tidy'
 
 export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null; customers?: Customer[] }) {
+  const [params, setParams] = useSearchParams()
+  const tab: SettingsTab =
+    params.get('tab') === 'roles' || params.get('tab') === 'tidy' ? (params.get('tab') as SettingsTab) : 'desk'
+  const setTab = (next: SettingsTab) => {
+    const copy = new URLSearchParams(params)
+    if (next === 'desk') copy.delete('tab')
+    else copy.set('tab', next)
+    setParams(copy, { replace: true })
+  }
   const [name, setName] = useState(DEFAULT_ORG_SETTINGS.name)
   const [supportPhone, setSupportPhone] = useState('')
   const [supportWhatsapp, setSupportWhatsapp] = useState('')
@@ -38,6 +49,18 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
     () => customers.filter((c) => repo.isStaleCustomer(c, Date.now(), Number(staleDays) || 30)),
     [customers, staleDays],
   )
+  const duplicateGroups = useMemo(() => {
+    const map = new Map<string, Customer[]>()
+    for (const c of customers) {
+      const email = c.email.trim().toLowerCase()
+      if (!email) continue
+      const list = map.get(email) ?? []
+      list.push(c)
+      map.set(email, list)
+    }
+    return [...map.values()].filter((group) => group.length > 1)
+  }, [customers])
+  const duplicateExtras = duplicateGroups.reduce((n, group) => n + group.length - 1, 0)
 
   const run = async (work: () => Promise<string>) => {
     setBusy(true)
@@ -89,13 +112,29 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
         <div>
           <p className="eyebrow">Owner</p>
           <h1>Settings</h1>
-          <p className="muted">Business details for the Antigua desk. Amounts stay in EC$ / XCD.</p>
+          <p className="muted">Roles, business details, and tidy-up for the Antigua desk. Amounts stay in EC$ / XCD.</p>
         </div>
       </header>
+
+      <div className="chips settings-tabs" role="tablist" aria-label="Settings">
+        <button type="button" className={`chip ${tab === 'roles' ? 'is-on' : ''}`} onClick={() => setTab('roles')}>
+          Roles
+        </button>
+        <button type="button" className={`chip ${tab === 'desk' ? 'is-on' : ''}`} onClick={() => setTab('desk')}>
+          Desk
+        </button>
+        <button type="button" className={`chip ${tab === 'tidy' ? 'is-on' : ''}`} onClick={() => setTab('tidy')}>
+          Tidy up
+          {duplicateExtras > 0 && <span className="nav-count hot">{duplicateExtras}</span>}
+        </button>
+      </div>
 
       {err && <p className="fail">{err}</p>}
       {msg && <p className="ok-text">{msg}</p>}
 
+      {tab === 'roles' && <AccountsDesk embedded />}
+
+      {tab === 'desk' && (
       <form className="card" onSubmit={save}>
         <div className="card-head">
           <h2>Desk</h2>
@@ -142,7 +181,10 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
           Save settings
         </button>
       </form>
+      )}
 
+      {tab === 'tidy' && (
+      <>
       <section className="card">
         <div className="card-head">
           <h2>Tidy up</h2>
@@ -171,6 +213,57 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
                 <strong>{tidyResult.customersDeleted}</strong>
               </li>
             )}
+            {typeof tidyResult.merged === 'number' && tidyResult.merged > 0 && (
+              <li>
+                <span>Email groups merged</span>
+                <strong>{tidyResult.merged}</strong>
+              </li>
+            )}
+          </ul>
+        )}
+
+        <div className="tidy-row">
+          <div>
+            <h3>Merge customers with the same email</h3>
+            <p className="muted tiny">
+              Keeps the record that has a plan, paid days, or Google uid. Moves the uid onto that row and deletes the
+              empty extras. {duplicateGroups.length
+                ? `${duplicateGroups.length} email${duplicateGroups.length === 1 ? '' : 's'} · ${duplicateExtras} extra row${duplicateExtras === 1 ? '' : 's'}.`
+                : 'No duplicate emails on the roster right now.'}
+            </p>
+          </div>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={busy || duplicateExtras === 0}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  `Merge ${duplicateGroups.length} duplicate email group${duplicateGroups.length === 1 ? '' : 's'} and delete ${duplicateExtras} extra record${duplicateExtras === 1 ? '' : 's'}?`,
+                )
+              ) {
+                return
+              }
+              void tidy('mergeDuplicateEmails')
+            }}
+          >
+            Merge same-email customers
+          </button>
+        </div>
+        {duplicateGroups.length > 0 && (
+          <ul className="ledger" style={{ marginBottom: '0.75rem' }}>
+            {duplicateGroups.slice(0, 12).map((group) => (
+              <li key={group[0].email}>
+                <span>
+                  {group[0].name || group[0].email}
+                  <span className="muted">
+                    {' '}
+                    · {group[0].email} · {group.length} records
+                  </span>
+                </span>
+                <span className="muted tiny">{group.map((c) => c.name).join(', ')}</span>
+              </li>
+            ))}
           </ul>
         )}
 
@@ -452,6 +545,8 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
           </ul>
         )}
       </section>
+      </>
+      )}
     </div>
   )
 }
