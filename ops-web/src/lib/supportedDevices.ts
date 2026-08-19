@@ -395,9 +395,9 @@ export const SUPPORTED_DEVICES: SupportedDevice[] = [
     canSuspend: true,
     streetCheap: 'Omada site gateway · ~US$120–150',
     manageVia: 'Omada SDN / Omada Cloud',
-    firmware: '1.4.2',
+    firmware: '1.4.2 on this fleet · TP-Link current HWv1: 1.4.3',
     notes:
-      'Stronger Omada gateway than ER605 (typically more WAN ports). Use as a site gateway, not a cheap customer CPE. Still the TP-Link path with a real ISP-style API — unlike TL-WR841N v14. Wired only. Pair with an Omada EAP if you need Wi-Fi.',
+      'Stronger Omada gateway than ER605 (typically more WAN ports). Use as a site gateway, not a cheap customer CPE. Still the TP-Link path with a real ISP-style API — unlike TL-WR841N v14. Wired only. Pair with an Omada EAP if you need Wi-Fi. 1.4.2 is official for HWv1 / v1.6 (Omada 5.13). TP-Link latest on that hardware is 1.4.3; HWv2 is a separate 2.x train (currently 2.3.6).',
     tags: ['tplink', 'tp-link', 'omada', 'er7206', 'tl-er7206', 'gateway'],
     caps: {
       suspend: { level: 'yes', detail: 'Omada: disable WAN, PPPoE, or firewall when the site is controller-managed' },
