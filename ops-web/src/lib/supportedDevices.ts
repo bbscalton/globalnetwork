@@ -525,6 +525,52 @@ export const SUPPORTED_DEVICES: SupportedDevice[] = [
       powerOff: { level: 'no', detail: 'No. Would need a smart plug in the house' },
     },
   },
+  {
+    id: 'tl-r470t-v6',
+    brand: 'TP-Link SafeStream',
+    name: 'TL-R470T+ v6.0',
+    sku: 'TL-R470T+ v6.0',
+    family: 'unsupported',
+    role: 'gateway',
+    recommended: false,
+    canSuspend: false,
+    streetCheap: 'SafeStream load-balance SMB router · local web UI only',
+    manageVia: 'Stock web UI / SNMP / remote HTTPS — not Omada SDN, no ISP client API',
+    firmware: 'v6.0 standalone SafeStream',
+    notes:
+      'Not an Omada ER-series gateway. TP-Link’s Omada compatibility list covers ER605 / ER7206 / later ER models — TL-R470T+ is not on it. Official spec is web-based utility, SNMP, and IP/MAC/URL filter on the LAN NAT path. It cannot list or kick wireless CPEs associated to an Omada AP. Do not add a Manage page. Use ER7206 + Omada AP to disconnect house CPEs. Local load-balance only.',
+    tags: ['tplink', 'tp-link', 'tl-r470t', 'tl-r470t+', 'r470t', 'safestream', 'load balance', 'not supported'],
+    caps: {
+      suspend: { level: 'no', detail: 'No Omada client-kick. LAN MAC filter only if this box is the NAT gateway — not last-mile CPE control' },
+      passwords: { level: 'no', detail: 'Local web UI only' },
+      reboot: { level: 'no', detail: 'Local / remote web UI — no documented desk API like ER7206' },
+      lanConfig: { level: 'no', detail: 'Local load-balance and ACL only' },
+      powerOff: { level: 'no', detail: 'No remote power-off' },
+    },
+  },
+  {
+    id: 'tl-r480t-v7',
+    brand: 'TP-Link SafeStream',
+    name: 'TL-R480T+ v7.0',
+    sku: 'TL-R480T+ v7.0',
+    family: 'unsupported',
+    role: 'gateway',
+    recommended: false,
+    canSuspend: false,
+    streetCheap: 'SafeStream rack load-balance router · local web UI only',
+    manageVia: 'Stock web UI / SNMP v1/v2c / remote management — not Omada SDN, no ISP client API',
+    firmware: 'v7.0 standalone SafeStream (TP-Link US lists End of Life)',
+    notes:
+      'Same class as TL-R470T+: SafeStream load-balance broadband router, not Omada. Official user guide is web utility, SNMP, MAC/URL filter — no TR-069, no controller adopt, no REST to kick AP-associated stations. Do not add a Manage page. Disconnect house CPEs from ER7206 + Omada AP, not from this box.',
+    tags: ['tplink', 'tp-link', 'tl-r480t', 'tl-r480t+', 'r480t', 'safestream', 'load balance', 'not supported'],
+    caps: {
+      suspend: { level: 'no', detail: 'Cannot kick wireless CPE on an Omada AP. Optional LAN MAC filter only if it is the NAT gateway' },
+      passwords: { level: 'no', detail: 'Local web UI only' },
+      reboot: { level: 'no', detail: 'Local / remote web UI — no documented desk API like ER7206' },
+      lanConfig: { level: 'no', detail: 'Local load-balance and ACL only' },
+      powerOff: { level: 'no', detail: 'No remote power-off' },
+    },
+  },
 ]
 
 export const SUPPORTED_DEVICE_COUNT = SUPPORTED_DEVICES.length

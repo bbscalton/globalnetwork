@@ -86,6 +86,8 @@ export function DevicesDesk() {
 
   const wr841 = SUPPORTED_DEVICES.find((d) => d.id === 'wr841n-v14')
   const mw301r = SUPPORTED_DEVICES.find((d) => d.id === 'mw301r-v2')
+  const r470 = SUPPORTED_DEVICES.find((d) => d.id === 'tl-r470t-v6')
+  const r480 = SUPPORTED_DEVICES.find((d) => d.id === 'tl-r480t-v7')
 
   return (
     <div className="desk">
@@ -110,11 +112,14 @@ export function DevicesDesk() {
           <h2>
             {wr841.brand} {wr841.name}
             {mw301r ? ` · ${mw301r.brand} ${mw301r.sku}` : ''}
+            {r470 ? ` · ${r470.sku}` : ''}
+            {r480 ? ` · ${r480.sku}` : ''}
           </h2>
           <p>
             No ISP API — local web UI only. You cannot remotely suspend a subscriber on these boxes. Issue a
             hAP lite, hEX, Omada ER605 / ER7206, or airMAX CPE instead. House last-mile cut is the Omada AP,
-            not a consumer router in the living room.
+            not a consumer router in the living room. TL-R470T+ / TL-R480T+ are SafeStream load-balance
+            routers, not Omada — they cannot disconnect wireless CPEs at client locations.
           </p>
         </section>
       )}
