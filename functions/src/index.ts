@@ -14,6 +14,7 @@ export {
 export { linkDeskAccount, inviteDeskOwner, reviewDeskMember, removeDeskOwner, revokeDeskInvite } from "./desk";
 export { expireSubscriptions, onChatCreated, onIssueCreated, onVoiceCallWritten } from "./notify";
 export { platformHealth, adminSendTestFcm, adminGetStorageDump } from "./health";
+export { saveOmadaConfig, omadaEr7206Status, omadaEr7206ListClients, omadaEr7206SetClientBlocked, saveOmadaClientMap } from "./omadaEr7206";
 export {
   saveOrgSettings,
   adjustSubscription,

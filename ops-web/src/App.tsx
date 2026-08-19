@@ -15,6 +15,7 @@ import { FieldMap } from './FieldMap'
 import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
 import { DevicesDesk } from './DevicesDesk'
+import { OmadaDesk } from './OmadaDesk'
 import { SettingsDesk } from './SettingsDesk'
 import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
 import { customerPin } from './lib/geo'
@@ -226,6 +227,7 @@ function Shell({
           Devices
           <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
         </NavLink>
+        <NavLink to="/er7206">Manage ER7206</NavLink>
         <NavLink to="/settings">Settings</NavLink>
         <div className="side-pulse">
           <p>
@@ -257,6 +259,7 @@ function Shell({
             element={<PlansDesk plans={plans} customers={customers} now={now} renewalWarnDays={warnDays} />}
           />
           <Route path="/devices" element={<DevicesDesk />} />
+          <Route path="/er7206" element={<OmadaDesk customers={customers} />} />
           <Route path="/settings" element={<SettingsDesk org={org} customers={customers} />} />
           <Route path="/accounts" element={<Navigate to="/settings?tab=roles" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />

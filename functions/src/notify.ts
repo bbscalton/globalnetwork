@@ -103,7 +103,10 @@ async function ensureChatIssue(customerId: string, name: string, kind: string, t
 export const expireSubscriptions = onSchedule("every 24 hours", async () => {
   const now = Date.now();
   const snap = await db.collection("customers").get();
+  const omadaCfg = await db.collection("adminConfig").doc("omadaEr7206").get();
+  const autoBlock = omadaCfg.get("autoSuspendOnExpire") === true;
   let flipped = 0;
+  let blocked = 0;
   for (const doc of snap.docs) {
     const status = String(doc.get("status") ?? "");
     if (status === "suspended") continue;
@@ -126,9 +129,21 @@ export const expireSubscriptions = onSchedule("every 24 hours", async () => {
           { type: "expiry", customerId: doc.id },
         );
       }
+      if (autoBlock && next === "expired") {
+        const mac = String(doc.get("omadaClientMac") ?? doc.get("cpeMac") ?? "");
+        if (mac) {
+          try {
+            const { setOmadaClientBlockedInternal } = await import("./omadaEr7206");
+            await setOmadaClientBlockedInternal(mac, true);
+            blocked += 1;
+          } catch (error) {
+            logger.warn("omada auto-block skipped", { customerId: doc.id, message: error instanceof Error ? error.message : String(error) });
+          }
+        }
+      }
     }
   }
-  logger.info("expireSubscriptions", { scanned: snap.size, flipped });
+  logger.info("expireSubscriptions", { scanned: snap.size, flipped, blocked });
 });
 
 export const onChatCreated = onDocumentCreated(

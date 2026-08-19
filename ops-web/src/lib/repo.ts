@@ -13,7 +13,7 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { COL, auth, db, functions } from './firebase'
 import { ORG_ID, R2_BASE } from './admin'
-import { DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_SETTINGS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OrgSettings, type Payment, type PaymentKind, type Plan, type VoiceCall } from './types'
+import { DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_SETTINGS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OmadaClientRow, type OmadaPublicConfig, type OmadaStatus, type OrgSettings, type Payment, type PaymentKind, type Plan, type VoiceCall } from './types'
 
 export { DAY_EXTENSION_RATE_XCD }
 
@@ -56,6 +56,8 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     callStatus: String(data.callStatus ?? 'idle'),
     liveCallId: String(data.liveCallId ?? ''),
     callRecording: data.callRecording === true,
+    omadaClientMac: String(data.omadaClientMac ?? data.cpeMac ?? ''),
+    cpeMac: String(data.cpeMac ?? data.omadaClientMac ?? ''),
   }
 }
 
@@ -249,7 +251,7 @@ export async function markChatRead(customerId: string): Promise<void> {
 
 export async function updateCustomerContact(
   customerId: string,
-  patch: { name?: string; phone?: string; email?: string; address?: string; planId?: string; planName?: string; planDays?: number; feeAmount?: number },
+  patch: { name?: string; phone?: string; email?: string; address?: string; planId?: string; planName?: string; planDays?: number; feeAmount?: number; omadaClientMac?: string; cpeMac?: string },
 ): Promise<void> {
   const database = requireDb()
   await updateDoc(doc(database, COL.customers, customerId), {
@@ -729,6 +731,42 @@ export async function saveCallRecording(
     recording: false,
   })
   return recordingUrl
+}
+
+export async function saveOmadaConfig(input: {
+  controllerUrl: string
+  username: string
+  password?: string
+  siteName: string
+  deviceMac: string
+  cfAccessClientId?: string
+  cfAccessClientSecret?: string
+  hardwareVersion: string
+  firmwareVersion: string
+  allowInsecureTls: boolean
+  autoSuspendOnExpire: boolean
+}): Promise<{ ok: boolean; config: OmadaPublicConfig }> {
+  return callable('saveOmadaConfig', input)
+}
+
+export async function omadaEr7206Status(): Promise<OmadaStatus> {
+  return callable('omadaEr7206Status', {})
+}
+
+export async function omadaEr7206ListClients(): Promise<{ ok: boolean; clients: OmadaClientRow[] }> {
+  return callable('omadaEr7206ListClients', {})
+}
+
+export async function omadaEr7206SetClientBlocked(input: {
+  mac?: string
+  customerId?: string
+  blocked: boolean
+}): Promise<{ ok: boolean; blocked: boolean; mac: string; method: string; reconnectOk: boolean }> {
+  return callable('omadaEr7206SetClientBlocked', input)
+}
+
+export async function saveOmadaClientMap(customerId: string, mac: string): Promise<{ ok: boolean; customerId: string; mac: string }> {
+  return callable('saveOmadaClientMap', { customerId, mac })
 }
 
 export async function getCall(customerId: string, callId: string): Promise<VoiceCall | null> {

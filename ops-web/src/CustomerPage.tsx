@@ -457,6 +457,54 @@ export function CustomerPage({
               }}
             />
           </label>
+          <label>
+            House CPE MAC (wireless station on the AP)
+            <input
+              defaultValue={customer.omadaClientMac || ''}
+              key={`${customer.id}-omada-mac`}
+              placeholder="AA-BB-CC-DD-EE-FF"
+              onBlur={(e) => {
+                const mac = e.target.value.trim()
+                if (mac !== (customer.omadaClientMac || '')) {
+                  void run(async () => {
+                    await repo.saveOmadaClientMap(customer.id, mac)
+                    return mac ? `Mapped CPE ${mac}` : 'Cleared CPE MAC'
+                  })
+                }
+              }}
+            />
+          </label>
+          <div className="form-row" style={{ marginTop: '0.75rem' }}>
+            <button
+              className="btn danger"
+              type="button"
+              disabled={busy || !(customer.omadaClientMac || customer.cpeMac)}
+              onClick={() => {
+                if (!window.confirm(`Disconnect CPE at this location? This kicks/blocks the house radio on the Omada AP. The ER7206 WAN stays up.`)) return
+                void run(async () => {
+                  const res = await repo.omadaEr7206SetClientBlocked({ customerId: customer.id, blocked: true })
+                  return `CPE disconnected (${res.mac}).`
+                })
+              }}
+            >
+              Disconnect CPE
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={busy || !(customer.omadaClientMac || customer.cpeMac)}
+              onClick={() => {
+                if (!window.confirm('Reconnect CPE at this location? Unblock the wireless station and try Omada reconnect.')) return
+                void run(async () => {
+                  const res = await repo.omadaEr7206SetClientBlocked({ customerId: customer.id, blocked: false })
+                  return `CPE reconnected (${res.mac}${res.reconnectOk ? ', reconnect sent' : ''}).`
+                })
+              }}
+            >
+              Reconnect CPE
+            </button>
+          </div>
+          <p className="muted tiny">These buttons kick the house CPE off the AP. Account Suspend above only marks billing — it does not touch the ER7206 WAN.</p>
           <button
             className="btn danger"
             type="button"

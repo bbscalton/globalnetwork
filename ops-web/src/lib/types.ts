@@ -34,6 +34,8 @@ export type Customer = {
   callStatus?: 'idle' | 'ringing' | 'in_call' | 'ended' | 'missed' | string
   liveCallId?: string
   callRecording?: boolean
+  omadaClientMac?: string
+  cpeMac?: string
 }
 
 export type Plan = {
@@ -139,6 +141,62 @@ export type DeskInvite = {
   status: string
   invitedBy: string
   invitedAtMs: number
+}
+
+export type OmadaPublicConfig = {
+  controllerUrl: string
+  username: string
+  passwordSaved: boolean
+  passwordLast4: string
+  siteName: string
+  deviceMac: string
+  cfAccessClientId: string
+  cfAccessSecretSaved: boolean
+  cfAccessSecretLast4: string
+  hardwareVersion: string
+  firmwareVersion: string
+  allowInsecureTls: boolean
+  autoSuspendOnExpire: boolean
+}
+
+export const DEFAULT_OMADA_HW = '1.0'
+export const DEFAULT_OMADA_FW = '1.4.2'
+
+export type OmadaStatus = {
+  ok: boolean
+  connected: boolean
+  controllerOk: boolean
+  loginOk: boolean
+  siteFound: boolean
+  deviceFound: boolean
+  deviceOnline: boolean
+  deviceName: string
+  ip: string
+  status: string
+  hardwareVersion: string
+  firmwareVersion: string
+  error: string
+  config: OmadaPublicConfig
+}
+
+export type OmadaClientRow = {
+  mac: string
+  ip: string
+  hostname: string
+  blocked: boolean
+  active: boolean
+  trafficDown: number
+  trafficUp: number
+  lastSeenMs: number
+  gatewayMac: string
+  customerId: string
+  customerName: string
+  wireless: boolean
+  apName: string
+  apMac: string
+  ssid: string
+  deviceType: string
+  likelyCpe: boolean
 }
 
 export type IssueTicket = {
