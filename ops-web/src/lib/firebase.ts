@@ -14,7 +14,7 @@ function readEnv(name: string): string {
   return ((import.meta.env as Record<string, string | undefined>)[name] ?? '').trim()
 }
 
-export const FIREBASE_CONFIGURED = Boolean(readEnv('VITE_FIREBASE_API_KEY') && readEnv('VITE_FIREBASE_PROJECT_ID'))
+const FIREBASE_ENV = Boolean(readEnv('VITE_FIREBASE_API_KEY') && readEnv('VITE_FIREBASE_PROJECT_ID'))
 
 const firebaseConfig = {
   apiKey: readEnv('VITE_FIREBASE_API_KEY'),
@@ -40,10 +40,37 @@ function createAuth(firebaseApp: FirebaseApp): Auth {
   return instance
 }
 
-export const app = FIREBASE_CONFIGURED ? initializeApp(firebaseConfig) : null
-export const auth = app ? createAuth(app) : null
-export const db = app ? getFirestore(app) : null
-export const functions = app ? getFunctions(app, 'us-central1') : null
+function bootFirebase(): {
+  app: FirebaseApp | null
+  auth: Auth | null
+  db: ReturnType<typeof getFirestore> | null
+  functions: ReturnType<typeof getFunctions> | null
+  configured: boolean
+} {
+  if (!FIREBASE_ENV) {
+    return { app: null, auth: null, db: null, functions: null, configured: false }
+  }
+  try {
+    const firebaseApp = initializeApp(firebaseConfig)
+    return {
+      app: firebaseApp,
+      auth: createAuth(firebaseApp),
+      db: getFirestore(firebaseApp),
+      functions: getFunctions(firebaseApp, 'us-central1'),
+      configured: true,
+    }
+  } catch (err) {
+    console.error('Firebase failed to initialize', err)
+    return { app: null, auth: null, db: null, functions: null, configured: false }
+  }
+}
+
+const boot = bootFirebase()
+export const app = boot.app
+export const auth = boot.auth
+export const db = boot.db
+export const functions = boot.functions
+export const FIREBASE_CONFIGURED = boot.configured
 
 if (functions && import.meta.env.DEV && readEnv('VITE_FUNCTIONS_EMULATOR') === '1') {
   connectFunctionsEmulator(functions, '127.0.0.1', 5001)

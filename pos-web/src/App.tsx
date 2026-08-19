@@ -43,25 +43,48 @@ export default function App() {
     return (
       <div className="gate">
         <div className="panel">
+          <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="GlobalNetwork" width={84} height={84} />
           <h1>POS not configured</h1>
           <p className="muted">This GitHub Pages build is missing Firebase keys.</p>
         </div>
       </div>
     )
   }
-  if (loading) return <div className="gate">Opening field POS…</div>
+  if (loading) {
+    return (
+      <div className="gate">
+        <div className="panel glow">
+          <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="GlobalNetwork" width={84} height={84} className="spin" />
+          <p className="eyebrow">GlobalNetwork · Antigua</p>
+          <h1>Field POS</h1>
+          <p className="muted">Staff sign-in required. Opening…</p>
+        </div>
+      </div>
+    )
+  }
   if (!user) return <Login signIn={signIn} signInWithGoogle={signInWithGoogle} />
-  if (linking && !canPos) return <div className="gate">Checking your desk role…</div>
+  if (linking && !canPos) {
+    return (
+      <div className="gate">
+        <div className="panel glow">
+          <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="GlobalNetwork" width={84} height={84} className="spin" />
+          <p className="eyebrow">GlobalNetwork · Antigua</p>
+          <h1>Field POS</h1>
+          <p className="muted">Checking your cashier role…</p>
+        </div>
+      </div>
+    )
+  }
   if (!canPos) {
     return (
       <div className="gate">
         <div className="panel">
           <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={64} height={64} />
           <p className="eyebrow">GlobalNetwork · Antigua</p>
-          <h1>{deskRole === 'pending' ? 'Waiting for approval' : 'POS access required'}</h1>
+          <h1>{deskRole === 'pending' ? 'Waiting for approval' : 'This POS is for cashiers and owners'}</h1>
           <p className="muted">
             {linkError ||
-              `${user.email} cannot take payments until an owner assigns cashier, manager, or owner.`}
+              `${user.email} cannot collect. Only an approved cashier, owner, or manager can use field POS.`}
           </p>
           <button className="btn ghost" type="button" onClick={() => void signOut()}>
             Sign out
@@ -111,7 +134,7 @@ function Login({
         <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="GlobalNetwork" width={84} height={84} className="spin" />
         <p className="eyebrow">GlobalNetwork · Antigua</p>
         <h1>Field POS</h1>
-        <p className="muted">Collect EC$ at a site and grant internet days. Approved staff only.</p>
+        <p className="muted">Sign in with your GlobalNetwork staff account. Only cashiers, owners, and managers can collect.</p>
         <input type="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <input type="password" required minLength={6} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p className="fail">{error}</p>}

@@ -95,6 +95,7 @@ jobs:
           mkdir -p ../marketing/dist/pos
           cp -R dist/. ../marketing/dist/pos/
           cp dist/index.html ../marketing/dist/pos/404.html
+          touch ../marketing/dist/.nojekyll
 
       - uses: subosito/flutter-action@v2
         with:
