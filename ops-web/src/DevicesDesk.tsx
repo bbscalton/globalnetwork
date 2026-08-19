@@ -229,6 +229,7 @@ export function DevicesDesk() {
             <h2>{device.name}</h2>
             <p className="muted tiny">
               {device.sku} · {roleLabel(device.role)}
+              {device.firmware ? ` · Firmware ${device.firmware}` : ''}
             </p>
             <p className="device-street">{device.streetCheap}</p>
             <p className="muted tiny">Manage via {device.manageVia}</p>

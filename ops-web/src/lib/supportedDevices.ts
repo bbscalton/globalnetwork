@@ -25,6 +25,7 @@ export type SupportedDevice = {
   notes: string
   tags: string[]
   caps: DeviceCaps
+  firmware?: string
 }
 
 export const DEVICE_ACTIONS: DeviceAction[] = [
@@ -394,6 +395,7 @@ export const SUPPORTED_DEVICES: SupportedDevice[] = [
     canSuspend: true,
     streetCheap: 'Omada site gateway · ~US$120–150',
     manageVia: 'Omada SDN / Omada Cloud',
+    firmware: '1.4.2',
     notes:
       'Stronger Omada gateway than ER605 (typically more WAN ports). Use as a site gateway, not a cheap customer CPE. Still the TP-Link path with a real ISP-style API — unlike TL-WR841N v14. Wired only. Pair with an Omada EAP if you need Wi-Fi.',
     tags: ['tplink', 'tp-link', 'omada', 'er7206', 'tl-er7206', 'gateway'],
@@ -509,6 +511,7 @@ export function deviceSearchBlob(device: SupportedDevice): string {
     device.brand,
     device.name,
     device.sku,
+    device.firmware ?? '',
     device.manageVia,
     device.role,
     device.streetCheap,
