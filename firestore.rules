@@ -7,12 +7,27 @@ service cloud.firestore {
     function isFounder() {
       return signedIn() && request.auth.token.email == 'neuereatec@gmail.com';
     }
+    function memberRole() {
+      return get(/databases/$(database)/documents/deskMembers/$(request.auth.uid)).data.role;
+    }
     function isOwner() {
       return isFounder()
         || (signedIn() && request.auth.token.owner == true)
         || (signedIn()
           && exists(/databases/$(database)/documents/deskMembers/$(request.auth.uid))
-          && get(/databases/$(database)/documents/deskMembers/$(request.auth.uid)).data.role == 'owner');
+          && memberRole() == 'owner');
+    }
+    function isManager() {
+      return isOwner()
+        || (signedIn()
+          && exists(/databases/$(database)/documents/deskMembers/$(request.auth.uid))
+          && memberRole() == 'manager');
+    }
+    function isPosStaff() {
+      return isManager()
+        || (signedIn()
+          && exists(/databases/$(database)/documents/deskMembers/$(request.auth.uid))
+          && memberRole() == 'cashier');
     }
     function customerOwns(customerId) {
       return signedIn() && (
@@ -30,7 +45,7 @@ service cloud.firestore {
     }
 
     match /deskMembers/{uid} {
-      allow read: if isOwner() || (signedIn() && request.auth.uid == uid);
+      allow read: if isManager() || (signedIn() && request.auth.uid == uid);
       allow write: if false;
     }
 
@@ -40,7 +55,13 @@ service cloud.firestore {
     }
 
     match /orgs/{orgId} {
-      allow read, write: if isOwner();
+      allow read: if isPosStaff();
+      allow write: if isOwner();
+    }
+
+    match /posOutlets/{outletId} {
+      allow read: if isPosStaff();
+      allow create, update, delete: if isManager();
     }
 
     match /plans/{planId} {
@@ -59,7 +80,7 @@ service cloud.firestore {
     }
 
     match /customers/{customerId} {
-      allow read: if isOwner() || customerOwns(customerId);
+      allow read: if isPosStaff() || customerOwns(customerId);
       allow create: if isOwner();
       allow update: if (isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
@@ -69,7 +90,7 @@ service cloud.firestore {
       allow delete: if isOwner();
 
       match /payments/{payId} {
-        allow read: if isOwner() || customerOwns(customerId);
+        allow read: if isPosStaff() || customerOwns(customerId);
         allow write: if false;
       }
 

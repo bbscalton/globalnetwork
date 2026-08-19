@@ -4,6 +4,7 @@ import type { ChatMessage, Customer, IssueTicket, Payment, Plan } from './lib/ty
 import * as repo from './lib/repo'
 import { ChatBubbleBody } from './ChatMedia'
 import { cyclePct, fmtDate, fmtWhen, initials, statusTone } from './lib/desk'
+import { useAuth } from './lib/authContext'
 import { AuthImage } from './lib/AuthImage'
 import { customerPin, displayAddress, looksLikeCoordinates } from './lib/geo'
 
@@ -20,6 +21,7 @@ export function CustomerPage({
 }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { isOwner } = useAuth()
   const customer = customers.find((c) => c.id === id)
   const [payments, setPayments] = useState<Payment[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -93,6 +95,8 @@ export function CustomerPage({
         days: useDays,
         amountPaid: paid,
         note: text,
+        locationId: 'owner-desk',
+        locationName: 'Owner desk',
       })
       setNote('')
       return `Service through ${fmtDate(res.paidUntilMs)} · ${res.status} · balance ${repo.formatEc(res.balanceDue)}`
@@ -505,6 +509,7 @@ export function CustomerPage({
             </button>
           </div>
           <p className="muted tiny">These buttons kick the house CPE off the AP. Account Suspend above only marks billing — it does not touch the ER7206 WAN.</p>
+          {isOwner && (
           <button
             className="btn danger"
             type="button"
@@ -521,6 +526,7 @@ export function CustomerPage({
           >
             Delete this account
           </button>
+          )}
         </section>
 
         <section className="card">
@@ -537,6 +543,7 @@ export function CustomerPage({
                   </strong>{' '}
                   · {p.kind} · {p.daysGranted}d
                   {p.note ? <span className="muted"> — {p.note}</span> : null}
+                  {p.locationName ? <span className="muted"> · {p.locationName}</span> : null}
                 </span>
                 <span className="ledger-end">
                   <span className="muted tiny">{fmtWhen(p.atMs)}</span>

@@ -1,6 +1,6 @@
 import { getApp, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, type DocumentSnapshot } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { logger } from "firebase-functions";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
@@ -53,18 +53,81 @@ export async function setOwnerClaim(uid: string, owner: boolean): Promise<void> 
   }
 }
 
+export type DeskStaffRole = "owner" | "manager" | "cashier";
+
+export const STAFF_ROLES: DeskStaffRole[] = ["owner", "manager", "cashier"];
+
+export function parseStaffRole(value: unknown, fallback: DeskStaffRole = "owner"): DeskStaffRole {
+  const role = String(value ?? "").trim().toLowerCase();
+  if (role === "owner" || role === "manager" || role === "cashier") return role;
+  return fallback;
+}
+
+export async function memberDoc(uid: string) {
+  return db.collection("deskMembers").doc(uid).get();
+}
+
 export async function memberIsOwner(uid: string): Promise<boolean> {
-  const snap = await db.collection("deskMembers").doc(uid).get();
+  const snap = await memberDoc(uid);
   return snap.exists && String(snap.get("role") ?? "") === "owner";
 }
 
-export async function requireOwner(request: CallableRequest): Promise<{ uid: string; email: string }> {
+export async function deskMemberRole(uid: string): Promise<string> {
+  const snap = await memberDoc(uid);
+  return snap.exists ? String(snap.get("role") ?? "") : "";
+}
+
+export type StaffSession = { uid: string; email: string; role: DeskStaffRole; outletIds: string[] };
+
+function outletIdsFrom(snap: DocumentSnapshot | null | undefined): string[] {
+  const raw = snap?.get("outletIds");
+  if (!Array.isArray(raw)) return [];
+  return raw.map((id) => String(id).trim()).filter(Boolean);
+}
+
+export async function requireOwner(request: CallableRequest): Promise<StaffSession> {
+  const staff = await requireStaff(request, ["owner"]);
+  return staff;
+}
+
+export async function requireManager(request: CallableRequest): Promise<StaffSession> {
+  return requireStaff(request, ["owner", "manager"]);
+}
+
+export async function requirePosStaff(request: CallableRequest): Promise<StaffSession> {
+  return requireStaff(request, ["owner", "manager", "cashier"]);
+}
+
+export async function requireStaff(
+  request: CallableRequest,
+  allowed: DeskStaffRole[],
+): Promise<StaffSession> {
   const user = requireAuth(request);
-  if (isFounderEmail(user.email)) return user;
+  const snap = await memberDoc(user.uid);
+  const outletIds = outletIdsFrom(snap);
+  if (isFounderEmail(user.email)) {
+    if (!allowed.includes("owner")) {
+      throw new HttpsError("permission-denied", "This action is not available for your desk role.");
+    }
+    return { ...user, role: "owner", outletIds };
+  }
   const claim = (request.auth?.token as Record<string, unknown> | undefined)?.owner;
-  if (claim === true) return user;
-  if (await memberIsOwner(user.uid)) return user;
-  throw new HttpsError("permission-denied", "Owner access required. Ask an approved owner to grant your desk role.");
+  const stored = String(snap.get("role") ?? "");
+  const role: DeskStaffRole | "" =
+    stored === "owner" || stored === "manager" || stored === "cashier"
+      ? stored
+      : claim === true
+        ? "owner"
+        : "";
+  if (!role || !allowed.includes(role)) {
+    throw new HttpsError(
+      "permission-denied",
+      allowed.includes("cashier")
+        ? "Approved desk staff required. Ask an owner to assign cashier, manager, or owner."
+        : "Owner access required. Ask an approved owner to grant your desk role.",
+    );
+  }
+  return { ...user, role, outletIds };
 }
 
 export async function writeAudit(entry: {

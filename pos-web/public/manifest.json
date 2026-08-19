@@ -1,0 +1,18 @@
+{
+  "name": "GlobalNetwork POS",
+  "short_name": "GN POS",
+  "description": "Field payment collection for GlobalNetwork in Antigua.",
+  "start_url": "/globalnetwork/pos/",
+  "scope": "/globalnetwork/pos/",
+  "display": "standalone",
+  "background_color": "#050816",
+  "theme_color": "#050816",
+  "icons": [
+    {
+      "src": "logo-gn.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

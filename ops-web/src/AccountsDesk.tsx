@@ -2,16 +2,29 @@ import { useEffect, useState, type FormEvent } from 'react'
 import * as repo from './lib/repo'
 import { fmtWhen } from './lib/desk'
 import { useAuth } from './lib/authContext'
-import type { DeskInvite, DeskMember } from './lib/types'
+import type { DeskInvite, DeskMember, DeskRole, PosOutlet } from './lib/types'
+
+type StaffRole = 'owner' | 'manager' | 'cashier'
+
+function roleLabel(role: DeskRole | string): string {
+  if (role === 'manager') return 'Manager'
+  if (role === 'cashier') return 'Cashier'
+  if (role === 'owner') return 'Owner'
+  return role
+}
 
 export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
   const { user, member } = useAuth()
   const [members, setMembers] = useState<DeskMember[]>([])
   const [invites, setInvites] = useState<DeskInvite[]>([])
+  const [outlets, setOutlets] = useState<PosOutlet[]>([])
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
+  const [role, setRole] = useState<StaffRole>('cashier')
+  const [outletIds, setOutletIds] = useState<string[]>([])
   const [rejectFor, setRejectFor] = useState<string | null>(null)
   const [reason, setReason] = useState('')
+  const [approveRole, setApproveRole] = useState<StaffRole>('cashier')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -19,15 +32,18 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     const u1 = repo.observeDeskMembers(setMembers)
     const u2 = repo.observeDeskInvites(setInvites)
+    const u3 = repo.observePosOutlets(setOutlets)
     return () => {
       u1()
       u2()
+      u3()
     }
   }, [])
 
-  const owners = members.filter((m) => m.role === 'owner')
+  const staff = members.filter((m) => m.role === 'owner' || m.role === 'manager' || m.role === 'cashier')
   const pending = members.filter((m) => m.role === 'pending')
   const rejected = members.filter((m) => m.role === 'rejected')
+  const activeOutlets = outlets.filter((o) => !o.disabled)
 
   const run = async (work: () => Promise<string>) => {
     setBusy(true)
@@ -45,11 +61,15 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
   const invite = (e: FormEvent) => {
     e.preventDefault()
     void run(async () => {
-      await repo.inviteDeskOwner(email, name)
+      await repo.inviteDeskOwner(email, name, role, role === 'cashier' ? outletIds : [])
       setEmail('')
       setName('')
-      return `Owner access assigned to ${email.trim().toLowerCase()}. They get in after Google sign-in with that Gmail.`
+      return `${roleLabel(role)} assigned to ${email.trim().toLowerCase()}. They get in after Google sign-in with that Gmail.`
     })
+  }
+
+  const toggleOutlet = (id: string) => {
+    setOutletIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
   return (
@@ -60,8 +80,8 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
             <p className="eyebrow">Access</p>
             <h1>Manage account & roles</h1>
             <p className="muted">
-              Google sign-in on this desk does not grant owner access by itself. Assign an owner email, or approve a
-              pending request after they sign in.
+              Owners assign managers (outlets + accounting) and cashiers (field POS only). Pending Google accounts
+              cannot take money.
             </p>
           </div>
         </header>
@@ -85,18 +105,18 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
           </p>
           <p>
             <span className="muted tiny">Role</span>
-            <strong>{member?.isPrimary ? 'Founding owner' : 'Owner'}</strong>
+            <strong>{member?.isPrimary ? 'Founding owner' : roleLabel(member?.role || 'owner')}</strong>
           </p>
         </div>
       </section>
 
       <section className="card">
         <div className="card-head">
-          <h2>Assign an owner</h2>
+          <h2>Assign staff</h2>
         </div>
         <p className="muted">
-          They still have to sign in with Google on this desk using that exact email. Until then, they cannot open
-          the roster.
+          Owner — full desk. Manager — outlets and paid-in. Cashier — field POS only. They must sign in with that
+          exact Google email.
         </p>
         <form className="composer role-form" onSubmit={invite}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" />
@@ -105,15 +125,32 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Gmail to assign as owner"
+            placeholder="Gmail to assign"
           />
-          <select disabled>
-            <option>Owner — full desk</option>
+          <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)}>
+            <option value="owner">Owner — full desk</option>
+            <option value="manager">Manager — outlets & accounting</option>
+            <option value="cashier">Cashier — POS only</option>
           </select>
           <button className="btn btn-primary" type="submit" disabled={busy}>
-            Assign owner
+            Assign {roleLabel(role).toLowerCase()}
           </button>
         </form>
+        {role === 'cashier' && activeOutlets.length > 0 && (
+          <div className="chips" style={{ marginTop: '0.75rem' }}>
+            <span className="muted tiny">Optional POS sites (empty = any outlet)</span>
+            {activeOutlets.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                className={`chip ${outletIds.includes(o.id) ? 'is-on' : ''}`}
+                onClick={() => toggleOutlet(o.id)}
+              >
+                {o.name}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -126,17 +163,20 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
             <div>
               <strong>{inviteRow.name || inviteRow.email}</strong>
               <div className="muted tiny">
-                {inviteRow.email} · invited {fmtWhen(inviteRow.invitedAtMs)} by {inviteRow.invitedBy}
+                {inviteRow.email} · {roleLabel(inviteRow.role)} · invited {fmtWhen(inviteRow.invitedAtMs)} by{' '}
+                {inviteRow.invitedBy}
               </div>
             </div>
             <button
               className="btn btn-ghost danger"
               type="button"
               disabled={busy}
-              onClick={() => void run(async () => {
-                await repo.revokeDeskInvite(inviteRow.email)
-                return 'Invite cancelled.'
-              })}
+              onClick={() =>
+                void run(async () => {
+                  await repo.revokeDeskInvite(inviteRow.email)
+                  return 'Invite cancelled.'
+                })
+              }
             >
               Cancel
             </button>
@@ -159,18 +199,23 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
               </div>
             </div>
             <div className="member-actions">
+              <select value={approveRole} onChange={(e) => setApproveRole(e.target.value as StaffRole)}>
+                <option value="owner">Owner</option>
+                <option value="manager">Manager</option>
+                <option value="cashier">Cashier</option>
+              </select>
               <button
                 className="btn btn-primary"
                 type="button"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
-                    await repo.reviewDeskMember(row.uid, 'approved')
-                    return `${row.email} is now an owner.`
+                    await repo.reviewDeskMember(row.uid, 'approved', '', approveRole)
+                    return `${row.email} is now a ${roleLabel(approveRole).toLowerCase()}.`
                   })
                 }
               >
-                Approve as owner
+                Approve
               </button>
               {rejectFor === row.uid ? (
                 <form
@@ -202,33 +247,53 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
 
       <section className="card">
         <div className="card-head">
-          <h2>Owners</h2>
+          <h2>Staff</h2>
         </div>
-        {owners.map((row) => (
+        {staff.map((row) => (
           <div key={row.id} className="member-row">
             <div>
               <strong>{row.name || row.email}</strong>
               <div className="muted tiny">
                 {row.email}
-                {row.isPrimary ? ' · founding owner' : ' · owner'}
+                {row.isPrimary ? ' · founding owner' : ` · ${roleLabel(row.role).toLowerCase()}`}
+                {row.role === 'cashier' && row.outletIds.length > 0
+                  ? ` · ${row.outletIds.length} assigned site${row.outletIds.length === 1 ? '' : 's'}`
+                  : ''}
               </div>
             </div>
             {row.isPrimary || row.uid === user?.uid ? (
               <span className="pill ok">{row.isPrimary ? 'Locked' : 'You'}</span>
             ) : (
-              <button
-                className="btn btn-ghost danger"
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    await repo.removeDeskOwner(row.uid)
-                    return `${row.email} no longer has owner access.`
-                  })
-                }
-              >
-                Remove
-              </button>
+              <div className="member-actions">
+                <select
+                  defaultValue={row.role}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const next = e.target.value as StaffRole
+                    void run(async () => {
+                      await repo.setDeskMemberRole(row.uid, next, row.outletIds)
+                      return `${row.email} is now a ${roleLabel(next).toLowerCase()}.`
+                    })
+                  }}
+                >
+                  <option value="owner">Owner</option>
+                  <option value="manager">Manager</option>
+                  <option value="cashier">Cashier</option>
+                </select>
+                <button
+                  className="btn btn-ghost danger"
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      await repo.removeDeskOwner(row.uid)
+                      return `${row.email} no longer has desk access.`
+                    })
+                  }
+                >
+                  Remove
+                </button>
+              </div>
             )}
           </div>
         ))}
@@ -251,12 +316,12 @@ export function AccountsDesk({ embedded = false }: { embedded?: boolean }) {
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
-                    await repo.reviewDeskMember(row.uid, 'approved')
-                    return `${row.email} is now an owner.`
+                    await repo.reviewDeskMember(row.uid, 'approved', '', 'cashier')
+                    return `${row.email} is now a cashier.`
                   })
                 }
               >
-                Restore as owner
+                Restore as cashier
               </button>
             </div>
           ))}

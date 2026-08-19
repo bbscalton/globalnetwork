@@ -54,6 +54,8 @@ export type PaymentKind = 'full' | 'partial' | 'grace' | 'adjust' | 'extension'
 
 export type Payment = {
   id: string
+  customerId?: string
+  customerName?: string
   amount: number
   kind: PaymentKind
   daysGranted: number
@@ -61,7 +63,34 @@ export type Payment = {
   atMs: number
   byUid: string
   balanceAdded?: number
+  locationId?: string
+  locationName?: string
+  collectedByUid?: string
+  collectedByEmail?: string
+  channel?: string
 }
+
+export type PosOutlet = {
+  id: string
+  name: string
+  disabled: boolean
+  createdAtMs: number
+}
+
+export const OWNER_DESK_OUTLET: PosOutlet = {
+  id: 'owner-desk',
+  name: 'Owner desk',
+  disabled: false,
+  createdAtMs: 0,
+}
+
+export const DEFAULT_POS_LOCATIONS: PosOutlet[] = [
+  { id: 'all-saints', name: 'All Saints', disabled: false, createdAtMs: 0 },
+  { id: 'potters', name: 'Potters', disabled: false, createdAtMs: 0 },
+  { id: 'bolans', name: 'Bolans', disabled: false, createdAtMs: 0 },
+  { id: 'jennings', name: 'Jennings', disabled: false, createdAtMs: 0 },
+  { id: 'st-johns', name: "St. John's", disabled: false, createdAtMs: 0 },
+]
 
 export type ChatMessage = {
   id: string
@@ -118,7 +147,7 @@ export type VoiceCall = {
   ownerVideoVisible?: boolean
 }
 
-export type DeskRole = 'owner' | 'pending' | 'rejected'
+export type DeskRole = 'owner' | 'manager' | 'cashier' | 'pending' | 'rejected'
 
 export type DeskMember = {
   id: string
@@ -131,6 +160,7 @@ export type DeskMember = {
   requestedAtMs: number
   approvedAtMs: number
   lastSeenMs: number
+  outletIds: string[]
 }
 
 export type DeskInvite = {

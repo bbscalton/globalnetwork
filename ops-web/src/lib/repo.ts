@@ -7,13 +7,14 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   updateDoc,
   type Unsubscribe,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { COL, auth, db, functions } from './firebase'
 import { ORG_ID, R2_BASE } from './admin'
-import { DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_SETTINGS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OmadaClientRow, type OmadaPublicConfig, type OmadaStatus, type OrgSettings, type Payment, type PaymentKind, type Plan, type VoiceCall } from './types'
+import { DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_SETTINGS, DEFAULT_POS_LOCATIONS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OmadaClientRow, type OmadaPublicConfig, type OmadaStatus, type OrgSettings, type Payment, type PaymentKind, type Plan, type PosOutlet, type VoiceCall } from './types'
 
 export { DAY_EXTENSION_RATE_XCD }
 
@@ -170,6 +171,11 @@ export function observePayments(customerId: string, onData: (rows: Payment[]) =>
           atMs: Number(data.atMs ?? 0),
           byUid: String(data.byUid ?? ''),
           balanceAdded: Number(data.balanceAdded ?? 0),
+          locationId: String(data.locationId ?? ''),
+          locationName: String(data.locationName ?? ''),
+          collectedByUid: String(data.collectedByUid ?? data.byUid ?? ''),
+          collectedByEmail: String(data.collectedByEmail ?? data.byEmail ?? ''),
+          channel: String(data.channel ?? data.source ?? ''),
         }
       }),
     )
@@ -305,6 +311,8 @@ export async function extendSubscription(input: {
   days: number
   amountPaid: number
   note: string
+  locationId?: string
+  locationName?: string
 }): Promise<{ paidUntilMs: number; status: CustomerStatus; balanceDue: number }> {
   return callable('extendSubscription', input)
 }
@@ -313,6 +321,8 @@ export async function grantDayExtension(input: {
   customerId: string
   days: number
   note?: string
+  locationId?: string
+  locationName?: string
 }): Promise<{ paidUntilMs: number; status: CustomerStatus; balanceDue: number; balanceAdded: number; daysGranted: number }> {
   return callable('grantDayExtension', input)
 }
@@ -473,12 +483,31 @@ export async function linkDeskAccount(): Promise<{ role: DeskRole; email: string
   return callable('linkDeskAccount', {})
 }
 
-export async function inviteDeskOwner(email: string, name = ''): Promise<void> {
-  await callable('inviteDeskOwner', { email, name })
+export async function inviteDeskOwner(
+  email: string,
+  name = '',
+  role: 'owner' | 'manager' | 'cashier' = 'owner',
+  outletIds: string[] = [],
+): Promise<void> {
+  await callable('inviteDeskOwner', { email, name, role, outletIds })
 }
 
-export async function reviewDeskMember(uid: string, decision: 'approved' | 'rejected', reason = ''): Promise<void> {
-  await callable('reviewDeskMember', { uid, decision, reason })
+export async function reviewDeskMember(
+  uid: string,
+  decision: 'approved' | 'rejected',
+  reason = '',
+  role: 'owner' | 'manager' | 'cashier' = 'owner',
+  outletIds: string[] = [],
+): Promise<void> {
+  await callable('reviewDeskMember', { uid, decision, reason, role, outletIds })
+}
+
+export async function setDeskMemberRole(
+  uid: string,
+  role: 'owner' | 'manager' | 'cashier',
+  outletIds: string[] = [],
+): Promise<void> {
+  await callable('setDeskMemberRole', { uid, role, outletIds })
 }
 
 export async function removeDeskOwner(uid: string): Promise<void> {
@@ -491,7 +520,10 @@ export async function revokeDeskInvite(email: string): Promise<void> {
 
 function asMember(id: string, data: Record<string, unknown>): DeskMember {
   const roleRaw = String(data.role ?? 'pending')
-  const role: DeskRole = roleRaw === 'owner' || roleRaw === 'rejected' ? roleRaw : 'pending'
+  const role: DeskRole =
+    roleRaw === 'owner' || roleRaw === 'manager' || roleRaw === 'cashier' || roleRaw === 'rejected'
+      ? roleRaw
+      : 'pending'
   return {
     id,
     uid: String(data.uid ?? id),
@@ -503,6 +535,7 @@ function asMember(id: string, data: Record<string, unknown>): DeskMember {
     requestedAtMs: Number(data.requestedAtMs ?? 0),
     approvedAtMs: Number(data.approvedAtMs ?? 0),
     lastSeenMs: Number(data.lastSeenMs ?? 0),
+    outletIds: Array.isArray(data.outletIds) ? data.outletIds.map(String) : [],
   }
 }
 
@@ -541,12 +574,117 @@ export function observeDeskInvites(onData: (rows: DeskInvite[]) => void): Unsubs
 }
 
 export function formatEc(amount: number): string {
-  return `EC$${amount.toLocaleString()}`
+  return `EC$${amount.toLocaleString(undefined, { minimumFractionDigits: amount % 1 ? 2 : 0, maximumFractionDigits: 2 })}`
 }
 
 export function daysLeft(paidUntilMs: number | null, now: number): number {
   if (!paidUntilMs) return 0
   return Math.ceil((paidUntilMs - now) / (24 * 60 * 60 * 1000))
+}
+
+function asOutlet(id: string, data: Record<string, unknown>): PosOutlet {
+  return {
+    id,
+    name: String(data.name ?? id),
+    disabled: data.disabled === true,
+    createdAtMs: Number(data.createdAtMs ?? 0),
+  }
+}
+
+export function observePosOutlets(onData: (rows: PosOutlet[]) => void, onError?: (e: Error) => void): Unsubscribe {
+  const database = requireDb()
+  return onSnapshot(
+    collection(database, COL.posOutlets),
+    (snap) => {
+      const rows = snap.docs.map((d) => asOutlet(d.id, d.data() as Record<string, unknown>))
+      rows.sort((a, b) => a.name.localeCompare(b.name))
+      onData(rows)
+    },
+    (e) => onError?.(e),
+  )
+}
+
+export async function savePosOutlet(input: { id?: string; name: string; disabled?: boolean }): Promise<string> {
+  const database = requireDb()
+  const name = input.name.trim()
+  if (!name) throw new Error('Outlet name is required.')
+  const id =
+    input.id?.trim() ||
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') ||
+    doc(collection(database, COL.posOutlets)).id
+  const ref = doc(database, COL.posOutlets, id)
+  const existing = await getDoc(ref)
+  await setDoc(
+    ref,
+    {
+      name,
+      disabled: input.disabled === true,
+      updatedAtMs: Date.now(),
+      createdAtMs: existing.exists() ? Number(existing.get('createdAtMs') ?? Date.now()) : Date.now(),
+    },
+    { merge: true },
+  )
+  return id
+}
+
+export async function seedDefaultPosOutlets(): Promise<void> {
+  const database = requireDb()
+  const existing = await getDocs(collection(database, COL.posOutlets))
+  if (!existing.empty) return
+  await Promise.all(
+    DEFAULT_POS_LOCATIONS.map((loc) =>
+      setDoc(doc(database, COL.posOutlets, loc.id), {
+        name: loc.name,
+        disabled: false,
+        createdAtMs: Date.now(),
+      }),
+    ),
+  )
+}
+
+export function observeCollectionPayments(
+  onData: (rows: Payment[]) => void,
+  onError?: (e: Error) => void,
+): Unsubscribe {
+  const database = requireDb()
+  return onSnapshot(
+    collection(database, COL.customers),
+    async (custSnap) => {
+      const rows: Payment[] = []
+      await Promise.all(
+        custSnap.docs.map(async (c) => {
+          const pays = await getDocs(collection(c.ref, COL.payments))
+          const name = String(c.data().name ?? '')
+          for (const p of pays.docs) {
+            const data = p.data()
+            rows.push({
+              id: p.id,
+              customerId: c.id,
+              customerName: name,
+              amount: Number(data.amount ?? 0),
+              kind: paymentKind(data.kind),
+              daysGranted: Number(data.daysGranted ?? 0),
+              note: String(data.note ?? ''),
+              atMs: Number(data.atMs ?? 0),
+              byUid: String(data.byUid ?? ''),
+              balanceAdded: Number(data.balanceAdded ?? 0),
+              locationId: String(data.locationId ?? ''),
+              locationName: String(data.locationName ?? ''),
+              collectedByUid: String(data.collectedByUid ?? data.byUid ?? ''),
+              collectedByEmail: String(data.collectedByEmail ?? data.byEmail ?? ''),
+              channel: String(data.channel ?? data.source ?? ''),
+            })
+          }
+        }),
+      )
+      rows.sort((a, b) => b.atMs - a.atMs)
+      onData(rows)
+    },
+    (e) => onError?.(e),
+  )
 }
 
 export type IceServer = { urls: string | string[]; username?: string; credential?: string }

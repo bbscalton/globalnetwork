@@ -17,11 +17,13 @@ import { PlansDesk } from './PlansDesk'
 import { DevicesDesk } from './DevicesDesk'
 import { OmadaDesk } from './OmadaDesk'
 import { SettingsDesk } from './SettingsDesk'
+import { OutletsDesk } from './OutletsDesk'
 import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
+import { POS_WEB_URL } from './lib/admin'
 import { customerPin } from './lib/geo'
 
 export default function App() {
-  const { configured, user, loading, linking, isOwner, deskRole, member, linkError, signIn, signInWithGoogle, signOut, orgId } = useAuth()
+  const { configured, user, loading, linking, isOwner, canDesk, canOutlets, canPos, deskRole, member, linkError, signIn, signInWithGoogle, signOut, orgId } = useAuth()
   if (!configured) {
     return (
       <div className="auth">
@@ -34,11 +36,25 @@ export default function App() {
   }
   if (loading) return <div className="auth">Opening owner desk…</div>
   if (!user) return <Login signIn={signIn} signInWithGoogle={signInWithGoogle} />
-  if (linking && !isOwner) {
+  if (linking && !canPos && !canOutlets && !isOwner) {
     return <div className="auth">Checking your desk role…</div>
   }
-  if (isOwner) {
+  if (canDesk) {
     return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} />
+  }
+  if (canOutlets) {
+    return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} mode="manager" />
+  }
+  if (canPos) {
+    return (
+      <AccessGate
+        title="Cashiers use field POS"
+        body={`${user.email} is a cashier. Collect at a site on the GlobalNetwork POS — this owner desk is for owners and managers.`}
+        extra={member?.name ? `Signed in as ${member.name}.` : null}
+        onSignOut={signOut}
+        pos
+      />
+    )
   }
   if (deskRole === 'pending') {
     return (
@@ -73,11 +89,13 @@ function AccessGate({
   body,
   extra,
   onSignOut,
+  pos,
 }: {
   title: string
   body: string
   extra?: string | null
   onSignOut: () => Promise<void>
+  pos?: boolean
 }) {
   return (
     <div className="auth">
@@ -87,6 +105,11 @@ function AccessGate({
         <h1>{title}</h1>
         <p className="muted">{body}</p>
         {extra && <p className="muted tiny">{extra}</p>}
+        {pos && (
+          <a className="btn btn-primary" href={POS_WEB_URL}>
+            Open field POS
+          </a>
+        )}
         <button className="btn btn-ghost" type="button" onClick={() => void onSignOut()}>
           Sign out
         </button>
@@ -155,11 +178,14 @@ function Shell({
   orgId,
   email,
   signOut,
+  mode = 'owner',
 }: {
   orgId: string
   email: string
   signOut: () => Promise<void>
+  mode?: 'owner' | 'manager'
 }) {
+  const owner = mode === 'owner'
   const [customers, setCustomers] = useState<Customer[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [issues, setIssues] = useState<IssueTicket[]>([])
@@ -199,9 +225,10 @@ function Shell({
           <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" />
           <div>
             <strong>GlobalNetwork</strong>
-            <div className="muted tiny">Owner desk</div>
+            <div className="muted tiny">{owner ? 'Owner desk' : 'Manager desk'}</div>
           </div>
         </div>
+        <NavLink to="/outlets">Outlets</NavLink>
         <NavLink to="/" end>
           Roster
           <span className="nav-count">{pulse.total}</span>
@@ -223,12 +250,19 @@ function Shell({
           <span className="nav-count">{customers.filter((c) => customerPin(c)).length}</span>
         </NavLink>
         <NavLink to="/plans">Plans</NavLink>
-        <NavLink to="/devices">
-          Devices
-          <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
-        </NavLink>
-        <NavLink to="/er7206">Manage ER7206</NavLink>
-        <NavLink to="/settings">Settings</NavLink>
+        {owner && (
+          <>
+            <NavLink to="/devices">
+              Devices
+              <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
+            </NavLink>
+            <NavLink to="/er7206">Manage ER7206</NavLink>
+            <NavLink to="/settings">Settings</NavLink>
+          </>
+        )}
+        <a className="nav-settings" href={POS_WEB_URL}>
+          Field POS
+        </a>
         <div className="side-pulse">
           <p>
             <b className="live-num">{pulse.active}</b> live
@@ -258,11 +292,12 @@ function Shell({
             path="/plans"
             element={<PlansDesk plans={plans} customers={customers} now={now} renewalWarnDays={warnDays} />}
           />
-          <Route path="/devices" element={<DevicesDesk />} />
-          <Route path="/er7206" element={<OmadaDesk customers={customers} />} />
-          <Route path="/settings" element={<SettingsDesk org={org} customers={customers} />} />
-          <Route path="/accounts" element={<Navigate to="/settings?tab=roles" replace />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/outlets" element={<OutletsDesk />} />
+          <Route path="/devices" element={owner ? <DevicesDesk /> : <Navigate to="/outlets" replace />} />
+          <Route path="/er7206" element={owner ? <OmadaDesk customers={customers} /> : <Navigate to="/outlets" replace />} />
+          <Route path="/settings" element={owner ? <SettingsDesk org={org} customers={customers} /> : <Navigate to="/outlets" replace />} />
+          <Route path="/accounts" element={<Navigate to={owner ? '/settings?tab=roles' : '/outlets'} replace />} />
+          <Route path="*" element={<Navigate to={owner ? '/' : '/outlets'} replace />} />
         </Routes>
       </main>
     </div>

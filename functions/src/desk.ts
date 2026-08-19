@@ -6,14 +6,21 @@ import {
   db,
   isFounderEmail,
   normalizeEmail,
+  parseStaffRole,
   requireAuth,
   requireOwner,
   sendToOwners,
   setOwnerClaim,
   writeAudit,
+  type DeskStaffRole,
 } from "./context";
 
-type DeskRole = "owner" | "pending" | "rejected";
+type DeskRole = DeskStaffRole | "pending" | "rejected";
+
+function parseOutletIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((id) => String(id).trim()).filter(Boolean))];
+}
 
 async function memberByEmail(email: string) {
   const matches = await db.collection("deskMembers").where("email", "==", email).limit(1).get();
@@ -35,22 +42,30 @@ async function writeMember(
   };
 }
 
-async function grantOwner(uid: string, email: string, name: string, approvedBy: string): Promise<void> {
+async function grantStaff(
+  uid: string,
+  email: string,
+  name: string,
+  role: DeskStaffRole,
+  approvedBy: string,
+  outletIds: string[] = [],
+): Promise<void> {
   await db.collection("deskMembers").doc(uid).set(
     {
       uid,
       email,
       name,
-      role: "owner",
-      isPrimary: isFounderEmail(email),
+      role,
+      isPrimary: role === "owner" && isFounderEmail(email),
       approvedAtMs: Date.now(),
       approvedBy,
       rejectedReason: "",
+      outletIds: role === "cashier" ? outletIds : [],
       lastSeenMs: Date.now(),
     },
     { merge: true },
   );
-  await setOwnerClaim(uid, true);
+  await setOwnerClaim(uid, role === "owner");
   await db.collection("deskInvites").doc(email).delete().catch(() => undefined);
 }
 
@@ -81,16 +96,22 @@ export const linkDeskAccount = onCall(CALLABLE, async (request) => {
     }
 
     if (isFounderEmail(email)) {
-      await grantOwner(user.uid, email, name, email);
+      await grantStaff(user.uid, email, name, "owner", email);
       return { role: "owner" as const, email, name, isPrimary: true };
     }
 
     const mine = await db.collection("deskMembers").doc(user.uid).get();
     const currentRole = String(mine.get("role") ?? "");
-    if (currentRole === "owner") {
-      await writeMember(user.uid, { email, name, role: "owner" });
-      await setOwnerClaim(user.uid, true);
-      return { role: "owner" as const, email, name, isPrimary: mine.get("isPrimary") === true };
+    if (currentRole === "owner" || currentRole === "manager" || currentRole === "cashier") {
+      await writeMember(user.uid, { email, name, role: currentRole });
+      await setOwnerClaim(user.uid, currentRole === "owner");
+      return {
+        role: currentRole as DeskStaffRole,
+        email,
+        name,
+        isPrimary: mine.get("isPrimary") === true,
+        outletIds: Array.isArray(mine.get("outletIds")) ? mine.get("outletIds") : [],
+      };
     }
     if (currentRole === "rejected") {
       return {
@@ -102,11 +123,18 @@ export const linkDeskAccount = onCall(CALLABLE, async (request) => {
     }
 
     const invite = await db.collection("deskInvites").doc(email).get();
-    if (invite.exists && String(invite.get("role") ?? "owner") === "owner") {
+    if (invite.exists) {
+      const invitedRole = parseStaffRole(invite.get("role"), "owner");
       const invitedBy = String(invite.get("invitedBy") ?? "owner");
-      await grantOwner(user.uid, email, name, invitedBy);
-      await writeAudit({ action: "desk_invite_accepted", adminEmail: invitedBy, targetUid: user.uid, detail: email });
-      return { role: "owner" as const, email, name, isPrimary: false };
+      const outletIds = parseOutletIds(invite.get("outletIds"));
+      await grantStaff(user.uid, email, name, invitedRole, invitedBy, outletIds);
+      await writeAudit({
+        action: "desk_invite_accepted",
+        adminEmail: invitedBy,
+        targetUid: user.uid,
+        detail: `${email} ${invitedRole}`,
+      });
+      return { role: invitedRole, email, name, isPrimary: false, outletIds };
     }
 
     const created = !mine.exists || currentRole !== "pending";
@@ -135,29 +163,52 @@ export const inviteDeskOwner = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const email = normalizeEmail(request.data?.email);
   const name = String(request.data?.name ?? "").trim();
+  const role = parseStaffRole(request.data?.role, "owner");
+  const outletIds = parseOutletIds(request.data?.outletIds);
   if (!email || !email.includes("@")) throw new HttpsError("invalid-argument", "A valid email is required.");
   if (isFounderEmail(email)) throw new HttpsError("already-exists", "That email is already the founding owner.");
 
   const existing = await memberByEmail(email);
-  if (existing && String(existing.get("role") ?? "") === "owner") {
-    throw new HttpsError("already-exists", "That person is already an owner.");
+  const existingRole = existing ? String(existing.get("role") ?? "") : "";
+  if (existing && (existingRole === "owner" || existingRole === "manager" || existingRole === "cashier")) {
+    await grantStaff(
+      existing.id,
+      email,
+      String(existing.get("name") ?? name),
+      role,
+      owner.email,
+      outletIds,
+    );
+    await writeAudit({
+      action: "desk_member_role_set",
+      adminEmail: owner.email,
+      targetUid: existing.id,
+      detail: `${email} ${role}`,
+    });
+    return { ok: true, status: "updated_existing", email, role };
   }
-  if (existing && String(existing.get("role") ?? "") === "pending") {
-    await grantOwner(existing.id, email, String(existing.get("name") ?? name), owner.email);
-    await writeAudit({ action: "desk_member_approved", adminEmail: owner.email, targetUid: existing.id, detail: email });
-    return { ok: true, status: "approved_existing", email };
+  if (existing && existingRole === "pending") {
+    await grantStaff(existing.id, email, String(existing.get("name") ?? name), role, owner.email, outletIds);
+    await writeAudit({
+      action: "desk_member_approved",
+      adminEmail: owner.email,
+      targetUid: existing.id,
+      detail: `${email} ${role}`,
+    });
+    return { ok: true, status: "approved_existing", email, role };
   }
 
   await db.collection("deskInvites").doc(email).set({
     email,
     name,
-    role: "owner",
+    role,
+    outletIds: role === "cashier" ? outletIds : [],
     status: "open",
     invitedBy: owner.email,
     invitedAtMs: Date.now(),
   });
-  await writeAudit({ action: "desk_owner_invited", adminEmail: owner.email, targetUid: email, detail: "owner" });
-  return { ok: true, status: "invited", email };
+  await writeAudit({ action: "desk_staff_invited", adminEmail: owner.email, targetUid: email, detail: role });
+  return { ok: true, status: "invited", email, role };
 });
 
 export const reviewDeskMember = onCall(CALLABLE, async (request) => {
@@ -165,6 +216,8 @@ export const reviewDeskMember = onCall(CALLABLE, async (request) => {
   const uid = String(request.data?.uid ?? "").trim();
   const decision = String(request.data?.decision ?? "").trim().toLowerCase();
   const reason = String(request.data?.reason ?? "").trim();
+  const role = parseStaffRole(request.data?.role, "owner");
+  const outletIds = parseOutletIds(request.data?.outletIds);
   if (!uid || (decision !== "approved" && decision !== "rejected")) {
     throw new HttpsError("invalid-argument", "uid and decision (approved|rejected) are required.");
   }
@@ -176,9 +229,14 @@ export const reviewDeskMember = onCall(CALLABLE, async (request) => {
   if (isFounderEmail(email)) throw new HttpsError("failed-precondition", "The founding owner cannot be changed here.");
 
   if (decision === "approved") {
-    await grantOwner(uid, email, name, owner.email);
-    await writeAudit({ action: "desk_member_approved", adminEmail: owner.email, targetUid: uid, detail: email });
-    return { ok: true, decision };
+    await grantStaff(uid, email, name, role, owner.email, outletIds);
+    await writeAudit({
+      action: "desk_member_approved",
+      adminEmail: owner.email,
+      targetUid: uid,
+      detail: `${email} ${role}`,
+    });
+    return { ok: true, decision, role };
   }
 
   if (!reason) throw new HttpsError("invalid-argument", "Say why desk access was rejected.");
@@ -196,6 +254,28 @@ export const reviewDeskMember = onCall(CALLABLE, async (request) => {
   return { ok: true, decision };
 });
 
+export const setDeskMemberRole = onCall(CALLABLE, async (request) => {
+  const owner = await requireOwner(request);
+  const uid = String(request.data?.uid ?? "").trim();
+  const role = parseStaffRole(request.data?.role, "cashier");
+  const outletIds = parseOutletIds(request.data?.outletIds);
+  if (!uid) throw new HttpsError("invalid-argument", "uid is required.");
+  const ref = db.collection("deskMembers").doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Staff member not found.");
+  const email = normalizeEmail(snap.get("email"));
+  if (isFounderEmail(email)) throw new HttpsError("failed-precondition", "The founding owner cannot be changed here.");
+  if (uid === owner.uid) throw new HttpsError("failed-precondition", "You cannot change your own role here.");
+  await grantStaff(uid, email, String(snap.get("name") ?? email), role, owner.email, outletIds);
+  await writeAudit({
+    action: "desk_member_role_set",
+    adminEmail: owner.email,
+    targetUid: uid,
+    detail: `${email} ${role}`,
+  });
+  return { ok: true, role };
+});
+
 export const removeDeskOwner = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const uid = String(request.data?.uid ?? "").trim();
@@ -203,7 +283,7 @@ export const removeDeskOwner = onCall(CALLABLE, async (request) => {
   if (uid === owner.uid) throw new HttpsError("failed-precondition", "You cannot remove your own owner access.");
   const ref = db.collection("deskMembers").doc(uid);
   const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError("not-found", "Owner not found.");
+  if (!snap.exists) throw new HttpsError("not-found", "Staff member not found.");
   const email = normalizeEmail(snap.get("email"));
   if (isFounderEmail(email) || email === ADMIN_EMAIL) {
     throw new HttpsError("failed-precondition", "The founding owner cannot be removed.");
@@ -219,7 +299,7 @@ export const removeDeskOwner = onCall(CALLABLE, async (request) => {
   );
   await db.collection("deskInvites").doc(email).delete().catch(() => undefined);
   await setOwnerClaim(uid, false);
-  await writeAudit({ action: "desk_owner_removed", adminEmail: owner.email, targetUid: uid, detail: email });
+  await writeAudit({ action: "desk_staff_removed", adminEmail: owner.email, targetUid: uid, detail: email });
   return { ok: true };
 });
 

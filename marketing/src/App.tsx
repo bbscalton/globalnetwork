@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
+const POS = (import.meta.env.VITE_POS_WEB_URL as string | undefined) || './pos/'
 const WEB_APP =
   (import.meta.env.VITE_CUSTOMER_WEB_URL as string | undefined) || './app/'
 const APK =
@@ -348,6 +349,7 @@ export default function App() {
           <div>
             <p className="footer-label">Staff</p>
             <a href={OPS}>Open owner desk</a>
+            <a href={POS}>Field POS</a>
             <a href={DESK_APK}>Download owner desk Android</a>
             <p className="muted small">For neuereatec / approved desk owners only. Not a customer download.</p>
           </div>

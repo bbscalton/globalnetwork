@@ -25,6 +25,9 @@ type AuthContextValue = {
   loading: boolean
   linking: boolean
   isOwner: boolean
+  canDesk: boolean
+  canOutlets: boolean
+  canPos: boolean
   deskRole: DeskRole | null
   member: DeskMember | null
   linkError: string | null
@@ -95,6 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.uid])
 
   const isOwner = deskRole === 'owner' || isProjectAdmin(user)
+  const canDesk = isOwner
+  const canOutlets = isOwner || deskRole === 'manager'
+  const canPos = isOwner || deskRole === 'manager' || deskRole === 'cashier'
 
   useEffect(() => {
     if (!isOwner) return
@@ -108,6 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       linking,
       isOwner,
+      canDesk,
+      canOutlets,
+      canPos,
       deskRole,
       member,
       linkError,
@@ -124,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (auth) await firebaseSignOut(auth)
       },
     }),
-    [user, loading, linking, isOwner, deskRole, member, linkError],
+    [user, loading, linking, isOwner, canDesk, canOutlets, canPos, deskRole, member, linkError],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

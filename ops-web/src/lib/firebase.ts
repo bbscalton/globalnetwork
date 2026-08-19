@@ -60,6 +60,7 @@ export const COL = {
   adminAuditLogs: 'adminAuditLogs',
   deskMembers: 'deskMembers',
   deskInvites: 'deskInvites',
+  posOutlets: 'posOutlets',
   calls: 'calls',
   iceOffer: 'iceOffer',
   iceAnswer: 'iceAnswer',

@@ -7,6 +7,7 @@ Two identities only: the **owner** (`neuereatec@gmail.com`) on the web desk, and
 - Marketing: https://bbscalton.github.io/globalnetwork/
 - Customer web app: https://bbscalton.github.io/globalnetwork/app/
 - Owner desk: https://bbscalton.github.io/globalnetwork/ops/
+- Field POS: https://bbscalton.github.io/globalnetwork/pos/
 - Customer Android APK: https://globalnetwork-media.neuereatec.workers.dev/app/android.apk
 - Owner desk Android APK: https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk
 - iOS IPA (unsigned CI build): https://github.com/bbscalton/globalnetwork/releases/latest/download/GlobalNetwork.ipa
@@ -20,6 +21,7 @@ Google sign-in on the customer web app needs `bbscalton.github.io` in Firebase C
 ```bash
 cd marketing && npm install && npm run dev
 cd ops-web && npm install && npm run dev
+cd pos-web && npm install && npm run dev
 cd functions && npm install && npm run build
 ```
 

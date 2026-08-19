@@ -30,6 +30,7 @@ jobs:
           cache-dependency-path: |
             marketing/package-lock.json
             ops-web/package-lock.json
+            pos-web/package-lock.json
 
       - name: Build marketing site
         working-directory: marketing
@@ -45,6 +46,7 @@ jobs:
           VITE_FUNCTIONS_HEALTH_URL: ${{ secrets.VITE_FUNCTIONS_HEALTH_URL }}
           VITE_PLATFORM_HEALTH_URL: ${{ secrets.VITE_PLATFORM_HEALTH_URL }}
           VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
+          VITE_POS_WEB_URL: https://bbscalton.github.io/globalnetwork/pos/
           VITE_CUSTOMER_WEB_URL: https://bbscalton.github.io/globalnetwork/app/
           VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
           VITE_GITHUB_REPO_URL: https://github.com/bbscalton/globalnetwork
@@ -64,6 +66,7 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
+          VITE_POS_WEB_URL: https://bbscalton.github.io/globalnetwork/pos/
           VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
         run: |
           npm ci
@@ -73,6 +76,25 @@ jobs:
           cp dist/index.html ../marketing/dist/ops/404.html
           cp ../marketing/dist/index.html ../marketing/dist/404.html
           touch ../marketing/dist/.nojekyll
+
+      - name: Build field POS into /pos
+        working-directory: pos-web
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_POS_WEB_URL: https://bbscalton.github.io/globalnetwork/pos/
+          VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
+          VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
+        run: |
+          npm ci
+          npm run build
+          mkdir -p ../marketing/dist/pos
+          cp -R dist/. ../marketing/dist/pos/
+          cp dist/index.html ../marketing/dist/pos/404.html
 
       - uses: subosito/flutter-action@v2
         with:

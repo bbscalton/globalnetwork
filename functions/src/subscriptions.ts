@@ -1,9 +1,28 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DAY_MS, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireOwner, sendToOwners, sendToToken, writeAudit } from "./context";
+import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DAY_MS, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
 import { customerByUid, customersWithEmail, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
 
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
+const OWNER_DESK_OUTLET = { locationId: "owner-desk", locationName: "Owner desk" };
+
+function collectionSite(requestData: unknown, staff: StaffSession): { locationId: string; locationName: string } {
+  const rec = requestData && typeof requestData === "object" ? (requestData as Record<string, unknown>) : {};
+  let locationId = String(rec.locationId ?? "").trim().slice(0, 80);
+  let locationName = String(rec.locationName ?? "").trim().slice(0, 80);
+  if (!locationId && !locationName) {
+    locationId = OWNER_DESK_OUTLET.locationId;
+    locationName = OWNER_DESK_OUTLET.locationName;
+  } else if (!locationId) {
+    locationId = locationName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || OWNER_DESK_OUTLET.locationId;
+  } else if (!locationName) {
+    locationName = locationId;
+  }
+  if (staff.role === "cashier" && staff.outletIds.length > 0 && !staff.outletIds.includes(locationId)) {
+    throw new HttpsError("permission-denied", "This cashier can only collect at assigned outlets.");
+  }
+  return { locationId, locationName };
+}
 
 export const ensureOrgDefaults = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
@@ -94,7 +113,7 @@ export const savePlan = onCall(CALLABLE, async (request) => {
 });
 
 export const createCustomer = onCall(CALLABLE, async (request) => {
-  const owner = await requireOwner(request);
+  const owner = await requireManager(request);
   const name = String(request.data?.name ?? "").trim();
   if (!name) throw new HttpsError("invalid-argument", "Name is required.");
   const email = normalizeEmail(request.data?.email);
@@ -169,11 +188,12 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
 });
 
 export const extendSubscription = onCall(CALLABLE, async (request) => {
-  const owner = await requireOwner(request);
+  const owner = await requirePosStaff(request);
   const customerId = String(request.data?.customerId ?? "");
   const days = Math.floor(Number(request.data?.days ?? 0));
   const amountPaid = Number(request.data?.amountPaid ?? 0);
   const note = String(request.data?.note ?? "").trim();
+  const site = collectionSite(request.data, owner);
   if (!customerId || days < 1) {
     throw new HttpsError("invalid-argument", "customerId and days (>= 1) are required.");
   }
@@ -215,6 +235,11 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
       note,
       atMs: now,
       byUid: owner.uid,
+      collectedByUid: owner.uid,
+      collectedByEmail: owner.email,
+      locationId: site.locationId,
+      locationName: site.locationName,
+      channel: site.locationId === OWNER_DESK_OUTLET.locationId ? "desk" : "pos",
     });
     return { paidUntilMs, status, balanceDue };
   });
@@ -238,10 +263,11 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
 });
 
 export const grantDayExtension = onCall(CALLABLE, async (request) => {
-  const owner = await requireOwner(request);
+  const owner = await requireManager(request);
   const customerId = String(request.data?.customerId ?? "");
   const days = Math.floor(Number(request.data?.days ?? 0));
   const note = String(request.data?.note ?? "").trim();
+  const site = collectionSite(request.data, owner);
   if (!customerId || !Number.isFinite(days) || days < 1) {
     throw new HttpsError("invalid-argument", "customerId and days (>= 1) are required.");
   }
@@ -278,6 +304,11 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
       note: ledgerNote,
       atMs: now,
       byUid: owner.uid,
+      collectedByUid: owner.uid,
+      collectedByEmail: owner.email,
+      locationId: site.locationId,
+      locationName: site.locationName,
+      channel: site.locationId === OWNER_DESK_OUTLET.locationId ? "desk" : "pos",
     });
     return { paidUntilMs, status: "grace" as const, balanceDue, balanceAdded: charge, daysGranted: days };
   });
