@@ -495,6 +495,36 @@ export const SUPPORTED_DEVICES: SupportedDevice[] = [
       powerOff: { level: 'no', detail: 'No. Would need a smart plug in the house' },
     },
   },
+  {
+    id: 'mw301r-v2',
+    brand: 'Mercusys',
+    name: 'MW301R',
+    sku: 'MW301R v2',
+    family: 'unsupported',
+    role: 'home-router',
+    recommended: false,
+    canSuspend: false,
+    streetCheap: 'Consumer junk · 300Mbps Wireless N home router, no ISP API',
+    manageVia: 'Local web UI only — no Omada SDN, RouterOS, UISP, or documented ISP API',
+    notes:
+      'Do not issue as managed CPE. Mercusys is TP-Link’s sister brand; this is still a consumer box (same class as TL-WR841N). No Omada/cloud/API. OpenWrt TOH has other Mercusys SKUs (MR70X / MR80X / MR90X) but not MW301R — v2 is ~1 MB flash / 8 MB RAM, not a real OpenWrt ISP path. Disconnecting a house CPE is done on the Omada AP (their real last-mile), not on this box. Prefer hAP lite or ER605 if they need a managed home router.',
+    tags: [
+      'mercusys',
+      'mw301r',
+      'mw301r v2',
+      'tp-link sister',
+      'tplink',
+      'not supported',
+      'consumer',
+    ],
+    caps: {
+      suspend: { level: 'no', detail: 'No remote WAN/PPPoE API. Local UI only if you are on site' },
+      passwords: { level: 'no', detail: 'Local web UI only' },
+      reboot: { level: 'no', detail: 'Local only — no management channel for the desk' },
+      lanConfig: { level: 'no', detail: 'Local only' },
+      powerOff: { level: 'no', detail: 'No. Would need a smart plug in the house' },
+    },
+  },
 ]
 
 export const SUPPORTED_DEVICE_COUNT = SUPPORTED_DEVICES.length

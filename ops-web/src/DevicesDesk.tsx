@@ -85,6 +85,7 @@ export function DevicesDesk() {
   }, [])
 
   const wr841 = SUPPORTED_DEVICES.find((d) => d.id === 'wr841n-v14')
+  const mw301r = SUPPORTED_DEVICES.find((d) => d.id === 'mw301r-v2')
 
   return (
     <div className="desk">
@@ -108,10 +109,12 @@ export function DevicesDesk() {
           </div>
           <h2>
             {wr841.brand} {wr841.name}
+            {mw301r ? ` · ${mw301r.brand} ${mw301r.sku}` : ''}
           </h2>
           <p>
-            No ISP API — local web UI only. You cannot remotely suspend a subscriber on this box. Issue a hAP
-            lite, hEX, Omada ER605 / ER7206, or airMAX CPE instead.
+            No ISP API — local web UI only. You cannot remotely suspend a subscriber on these boxes. Issue a
+            hAP lite, hEX, Omada ER605 / ER7206, or airMAX CPE instead. House last-mile cut is the Omada AP,
+            not a consumer router in the living room.
           </p>
         </section>
       )}
@@ -189,7 +192,7 @@ export function DevicesDesk() {
       <div className="desk-toolbar">
         <input
           className="search search-lg"
-          placeholder="Search litebeam, hap, wr841, nanostation, hex, omada…"
+          placeholder="Search litebeam, hap, wr841, mw301r, nanostation, hex, omada…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           autoComplete="off"
