@@ -310,12 +310,18 @@ export function Board({
               Plan
               <select value={form.planId} onChange={(e) => setForm({ ...form, planId: e.target.value })}>
                 <option value="">Select a package</option>
-                {plans.filter((p) => p.active).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} · {p.days}d · {repo.formatEc(p.feeAmount)}
-                  </option>
-                ))}
+                {[...plans]
+                  .sort((a, b) => a.days - b.days || a.name.localeCompare(b.name))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {p.days}d · {repo.formatEc(p.feeAmount)}
+                      {p.active ? '' : ' (hidden)'}
+                    </option>
+                  ))}
               </select>
+              {plans.length === 0 && (
+                <span className="muted tiny">No plans in catalog — open Plans and seed defaults.</span>
+              )}
             </label>
             {msg && <p className="fail">{msg}</p>}
             <div className="modal-actions">

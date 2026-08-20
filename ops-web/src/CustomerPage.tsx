@@ -60,6 +60,14 @@ export function CustomerPage({
   }, [customer?.id, customer?.planDays, customer?.feeAmount, customer?.balanceDue, customer?.paidUntilMs])
 
   const relatedIssues = useMemo(() => issues.filter((i) => i.customerId === id), [issues, id])
+  const catalogPlans = useMemo(() => {
+    return [...plans].sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1
+      if (a.days !== b.days) return a.days - b.days
+      return a.name.localeCompare(b.name)
+    })
+  }, [plans])
+  const sellingPlans = useMemo(() => catalogPlans.filter((p) => p.active), [catalogPlans])
 
   if (!id) return <Navigate to="/" replace />
   if (customers.length > 0 && !customer) {
@@ -74,6 +82,12 @@ export function CustomerPage({
 
   const left = repo.daysLeft(customer.paidUntilMs, now)
   const pct = cyclePct(customer, now)
+  const needsPackage =
+    !String(customer.planId || '').trim() ||
+    !String(customer.planName || '').trim() ||
+    !(Number(customer.feeAmount) > 0)
+  const currentPlan = catalogPlans.find((p) => p.id === customer.planId)
+  const packageLabel = customer.planName || currentPlan?.name || 'Unassigned'
 
   const run = async (work: () => Promise<string>) => {
     setBusy(true)
@@ -129,17 +143,54 @@ export function CustomerPage({
     })
   }
 
-  const assignPlan = async (planId: string) => {
-    const plan = plans.find((p) => p.id === planId)
-    if (!plan) return
-    await repo.updateCustomerContact(customer.id, {
-      planId: plan.id,
-      planName: plan.name,
-      planDays: plan.days,
-      feeAmount: plan.feeAmount,
+  const assignPlan = (planId: string) =>
+    void run(async () => {
+      const nextId = planId.trim()
+      if (!nextId) {
+        await repo.updateCustomerContact(customer.id, {
+          planId: '',
+          planName: '',
+          planDays: 0,
+          feeAmount: 0,
+        })
+        return 'Package cleared — Unassigned. Assign a plan before Collect full.'
+      }
+      const plan = catalogPlans.find((p) => p.id === nextId)
+      if (!plan) throw new Error('That plan is not in the catalog. Add it under Plans, then refresh.')
+      await repo.updateCustomerContact(customer.id, {
+        planId: plan.id,
+        planName: plan.name,
+        planDays: plan.days,
+        feeAmount: plan.feeAmount,
+      })
+      return `Assigned ${plan.name} · ${plan.days}d · ${repo.formatEc(plan.feeAmount)}. Collect full now uses this fee.`
     })
-    setMsg(`Assigned ${plan.name}. Grant days to put them on-network.`)
-  }
+
+  const planOptionLabel = (p: Plan) =>
+    `${p.name} · ${p.days}d · ${repo.formatEc(p.feeAmount)}${p.active ? '' : ' (hidden)'}`
+
+  const planSelectOptions = (
+    <>
+      <option value="">{needsPackage ? 'Select a package…' : 'Unassigned'}</option>
+      {sellingPlans.map((p) => (
+        <option key={p.id} value={p.id}>
+          {planOptionLabel(p)}
+        </option>
+      ))}
+      {catalogPlans
+        .filter((p) => !p.active)
+        .map((p) => (
+          <option key={p.id} value={p.id}>
+            {planOptionLabel(p)}
+          </option>
+        ))}
+      {customer.planId && !catalogPlans.some((p) => p.id === customer.planId) && (
+        <option value={customer.planId}>
+          {customer.planName || customer.planId} · {customer.planDays || '?'}d · {repo.formatEc(customer.feeAmount)} (missing from catalog)
+        </option>
+      )}
+    </>
+  )
 
   return (
     <div className="record">
@@ -184,6 +235,41 @@ export function CustomerPage({
 
       {err && <p className="fail">{err}</p>}
       {msg && <p className="ok-text">{msg}</p>}
+
+      <section className={`card action-card${needsPackage ? ' package-needed' : ''}`}>
+        <div className="card-head">
+          <h2>{needsPackage ? 'Assign package' : 'Package'}</h2>
+          <span className={`pill ${needsPackage ? 'warn' : 'ok'}`}>{packageLabel}</span>
+        </div>
+        {needsPackage ? (
+          <p className="warn-text">
+            No selling plan on this record — Collect full shows leftover days with EC$0 until you assign one from the
+            catalog.
+          </p>
+        ) : (
+          <p className="muted">
+            Current: <strong>{packageLabel}</strong> · {customer.planDays || currentPlan?.days || '—'}d ·{' '}
+            {repo.formatEc(customer.feeAmount)}. Change below anytime.
+          </p>
+        )}
+        {catalogPlans.length === 0 ? (
+          <p className="fail">
+            Add a plan under Plans first — <Link to="/plans">open Plans</Link>.
+          </p>
+        ) : (
+          <label style={{ marginTop: '0.75rem' }}>
+            {needsPackage ? 'Pick a selling plan' : 'Change plan'}
+            <select value={customer.planId || ''} disabled={busy} onChange={(e) => assignPlan(e.target.value)}>
+              {planSelectOptions}
+            </select>
+          </label>
+        )}
+        {sellingPlans.length === 0 && catalogPlans.length > 0 && (
+          <p className="muted tiny" style={{ marginTop: '0.5rem' }}>
+            All catalog plans are hidden. Unhide one under <Link to="/plans">Plans</Link>, or pick a hidden plan above.
+          </p>
+        )}
+      </section>
 
       {(customer.approvalStatus === 'pending' || customer.approvalStatus === 'rejected' || customer.idPhotoUrl) && (
         <section className="card action-card">
@@ -254,11 +340,17 @@ export function CustomerPage({
         <div className="card-head">
           <h2>Renew or collect</h2>
         </div>
+        {needsPackage && (
+          <p className="warn-text" style={{ marginBottom: '0.75rem' }}>
+            Assign a package above before Collect full — fee is still EC$0.
+          </p>
+        )}
         <div className="quick-renew">
           <button
             className="btn btn-primary"
             type="button"
-            disabled={busy}
+            disabled={busy || needsPackage}
+            title={needsPackage ? 'Assign a package first' : undefined}
             onClick={() => void extend(customer.planDays || 30, customer.feeAmount, 'Full plan renewal')}
           >
             Collect full {customer.planDays || 30}d · {repo.formatEc(customer.feeAmount)}
@@ -418,13 +510,8 @@ export function CustomerPage({
           </label>
           <label>
             Package
-            <select value={customer.planId} onChange={(e) => void assignPlan(e.target.value)}>
-              <option value="">Unassigned</option>
-              {plans.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} · {p.days}d · {repo.formatEc(p.feeAmount)} {p.active ? '' : '(hidden)'}
-                </option>
-              ))}
+            <select value={customer.planId || ''} disabled={busy || catalogPlans.length === 0} onChange={(e) => assignPlan(e.target.value)}>
+              {planSelectOptions}
             </select>
           </label>
           <label>

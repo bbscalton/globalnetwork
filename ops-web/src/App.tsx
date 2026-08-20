@@ -202,7 +202,7 @@ function Shell({
 
   useEffect(() => {
     const u1 = repo.observeCustomers(orgId, setCustomers, (e) => setError(e.message))
-    const u2 = repo.observePlans(setPlans)
+    const u2 = repo.observePlans(setPlans, (e) => setError(e.message))
     const u3 = repo.observeIssues(setIssues)
     const u4 = repo.observeOrg(orgId, setOrg)
     return () => {

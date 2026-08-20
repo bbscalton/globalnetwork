@@ -115,6 +115,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: 18px;
   padding: 1.15rem 1.2rem;
 }
+.card.package-needed {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.1), rgba(255, 255, 255, 0.03));
+}
 .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 0.85rem; }
 .muted { color: var(--muted); }
 .ok-text { color: #6ee7b7; }
@@ -139,7 +143,7 @@ p.fail { padding: 0.7rem 0.85rem; border-radius: 12px; }
   backdrop-filter: blur(16px);
 }
 .auth-logo { border-radius: 50%; }
-.auth-card input, .search, label input, label select, label textarea, .composer input, .form-row input, .form-row textarea {
+.auth-card input, .search, label input, label select, label textarea, .composer input, .form-row input, .form-row select, .form-row textarea {
   width: 100%; padding: 0.75rem 0.85rem; border-radius: 12px;
   border: 1px solid var(--line); background: rgba(255,255,255,0.05); color: #fff;
 }
