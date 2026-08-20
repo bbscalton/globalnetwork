@@ -135,7 +135,7 @@ export function PlansDesk({
         <article className="queue-card">
           <span className="queue-label">To collect</span>
           <strong className={`count-pop ${kpis.owed > 0 ? 'warn-text' : ''}`}>{formatEc(kpis.owed)}</strong>
-          <span className="muted">Partial / grace balances</span>
+          <span className="muted">Plan due + extension balances</span>
         </article>
       </section>
 

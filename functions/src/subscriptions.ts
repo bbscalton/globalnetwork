@@ -6,6 +6,28 @@ import { customerByUid, customersWithEmail, normalizeEmail, pickCustomerKeeper }
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
 const OWNER_DESK_OUTLET = { locationId: "owner-desk", locationName: "Owner desk" };
 
+type DueFields = { get: (field: string) => unknown };
+
+/** Balance formula: planDue + extensionDue. Legacy docs without the split treat balanceDue as plan due. */
+function readDues(snap: DueFields): { planDue: number; extensionDue: number } {
+  const hasPlan = snap.get("planDue") != null;
+  const hasExt = snap.get("extensionDue") != null;
+  if (hasPlan || hasExt) {
+    return {
+      planDue: Math.max(0, Number(snap.get("planDue") ?? 0)),
+      extensionDue: Math.max(0, Number(snap.get("extensionDue") ?? 0)),
+    };
+  }
+  return {
+    planDue: Math.max(0, Number(snap.get("balanceDue") ?? 0)),
+    extensionDue: 0,
+  };
+}
+
+function totalDue(planDue: number, extensionDue: number): number {
+  return Math.max(0, planDue) + Math.max(0, extensionDue);
+}
+
 function collectionSite(requestData: unknown, staff: StaffSession): { locationId: string; locationName: string } {
   const rec = requestData && typeof requestData === "object" ? (requestData as Record<string, unknown>) : {};
   let locationId = String(rec.locationId ?? "").trim().slice(0, 80);
@@ -146,6 +168,8 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
         patch.planDays = planDays;
         patch.feeAmount = feeAmount;
         if (Number(keeper.get("balanceDue") ?? 0) === 0 && Number(keeper.get("paidAmount") ?? 0) === 0) {
+          patch.planDue = feeAmount;
+          patch.extensionDue = 0;
           patch.balanceDue = feeAmount;
         }
       }
@@ -173,6 +197,8 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
     planDays,
     feeAmount,
     paidAmount: 0,
+    planDue: feeAmount,
+    extensionDue: 0,
     balanceDue: feeAmount,
     paidUntilMs: null,
     graceUntilMs: null,
@@ -187,6 +213,10 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
   return { customerId: ref.id, existing: false };
 });
 
+/**
+ * Collect the full package/monthly plan fee (no partial plan payments).
+ * Clears planDue. If amountPaid also covers extensionDue, clears that too (does not clear plan when only paying extension — use grantDayExtension paidNow for extension-only cash).
+ */
 export const extendSubscription = onCall(CALLABLE, async (request) => {
   const owner = await requirePosStaff(request);
   const customerId = String(request.data?.customerId ?? "");
@@ -197,7 +227,9 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
   if (!customerId || days < 1) {
     throw new HttpsError("invalid-argument", "customerId and days (>= 1) are required.");
   }
-  if (amountPaid < 0) throw new HttpsError("invalid-argument", "amountPaid cannot be negative.");
+  if (!Number.isFinite(amountPaid) || amountPaid < 0) {
+    throw new HttpsError("invalid-argument", "amountPaid cannot be negative.");
+  }
 
   const ref = db.collection("customers").doc(customerId);
   const now = Date.now();
@@ -205,34 +237,34 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
     const feeAmount = Number(snap.get("feeAmount") ?? 0);
+    if (feeAmount <= 0) {
+      throw new HttpsError("failed-precondition", "Assign a package with a fee before collecting the plan.");
+    }
+    if (amountPaid + 1e-9 < feeAmount) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Plan collect requires the full fee of EC$${feeAmount}. Partial plan payments are not allowed.`,
+      );
+    }
+
+    const dues = readDues(snap);
     const prevPaid = Number(snap.get("paidAmount") ?? 0);
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
     const statusNow = String(snap.get("status") ?? "expired");
     const base = statusNow === "active" || statusNow === "grace" ? Math.max(prevUntil, now) : now;
     const paidUntilMs = base + days * DAY_MS;
+
+    let extensionDue = dues.extensionDue;
+    const towardExtension = Math.max(0, amountPaid - feeAmount);
+    // Only clear extension in the same call when the overage covers the full extensionDue.
+    const extensionCollected =
+      dues.extensionDue > 0 && towardExtension + 1e-9 >= dues.extensionDue ? dues.extensionDue : 0;
+    extensionDue = Math.max(0, extensionDue - extensionCollected);
+    const planDue = 0;
+    const balanceDue = totalDue(planDue, extensionDue);
     const paidAmount = prevPaid + amountPaid;
-    const cycleFee = feeAmount > 0 ? feeAmount : amountPaid;
-    const partial = feeAmount > 0 && amountPaid < feeAmount;
-    const balanceDue = Math.max(0, cycleFee - amountPaid);
-    const status = partial ? "grace" : "active";
-    const graceUntilMs = partial ? paidUntilMs : null;
-    tx.update(ref, {
-      paidUntilMs,
-      paidAmount,
-      balanceDue,
-      status,
-      graceUntilMs,
-      lastPaymentAmount: amountPaid,
-      lastPaymentMs: now,
-      approvalStatus: "approved",
-      approvedAtMs: now,
-    });
-    const payRef = ref.collection("payments").doc();
-    tx.set(payRef, {
-      amount: amountPaid,
-      kind: partial ? (amountPaid === 0 ? "grace" : "partial") : "full",
-      daysGranted: days,
-      note,
+
+    const payMeta = {
       atMs: now,
       byUid: owner.uid,
       collectedByUid: owner.uid,
@@ -240,15 +272,51 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
       locationId: site.locationId,
       locationName: site.locationName,
       channel: site.locationId === OWNER_DESK_OUTLET.locationId ? "desk" : "pos",
+    };
+
+    tx.update(ref, {
+      paidUntilMs,
+      paidAmount,
+      planDue,
+      extensionDue,
+      balanceDue,
+      status: "active",
+      graceUntilMs: null,
+      lastPaymentAmount: amountPaid,
+      lastPaymentMs: now,
+      approvalStatus: "approved",
+      approvedAtMs: now,
+      updatedAtMs: now,
     });
-    return { paidUntilMs, status, balanceDue };
+    tx.set(ref.collection("payments").doc(), {
+      amount: feeAmount,
+      kind: "full",
+      daysGranted: days,
+      note: note || "Plan due collected",
+      planCollected: feeAmount,
+      extensionCollected: 0,
+      ...payMeta,
+    });
+    if (extensionCollected > 0) {
+      tx.set(ref.collection("payments").doc(), {
+        amount: extensionCollected,
+        kind: "extension",
+        daysGranted: 0,
+        balanceAdded: 0,
+        note: note || "Extension due collected with plan",
+        planCollected: 0,
+        extensionCollected,
+        ...payMeta,
+      });
+    }
+    return { paidUntilMs, status: "active" as const, balanceDue, planDue, extensionDue, extensionCollected };
   });
 
   await writeAudit({
     action: "extend_subscription",
     adminEmail: owner.email,
     targetUid: customerId,
-    detail: `${days}d paid ${amountPaid} note=${note}`,
+    detail: `${days}d paid ${amountPaid} planDue=0 extDue=${result.extensionDue} note=${note}`,
   });
 
   const customer = await ref.get();
@@ -262,11 +330,17 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
   return result;
 });
 
+/**
+ * Grant day extensions at EC$6/day.
+ * paidNow=false (default): charge to balance → stacks extensionDue (does not touch planDue).
+ * paidNow=true: collect days*6 now, grant days, do not add to extensionDue.
+ */
 export const grantDayExtension = onCall(CALLABLE, async (request) => {
   const owner = await requireManager(request);
   const customerId = String(request.data?.customerId ?? "");
   const days = Math.floor(Number(request.data?.days ?? 0));
   const note = String(request.data?.note ?? "").trim();
+  const paidNow = request.data?.paidNow === true || request.data?.collectNow === true;
   const site = collectionSite(request.data, owner);
   if (!customerId || !Number.isFinite(days) || days < 1) {
     throw new HttpsError("invalid-argument", "customerId and days (>= 1) are required.");
@@ -274,7 +348,10 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
 
   const charge = days * DAY_EXTENSION_RATE_XCD;
   const ledgerNote =
-    note || `${days}-day extension @ EC$${DAY_EXTENSION_RATE_XCD}/day · EC$${charge} added to balance`;
+    note ||
+    (paidNow
+      ? `${days}-day extension @ EC$${DAY_EXTENSION_RATE_XCD}/day · EC$${charge} collected now`
+      : `${days}-day extension @ EC$${DAY_EXTENSION_RATE_XCD}/day · EC$${charge} charged to balance`);
 
   const ref = db.collection("customers").doc(customerId);
   const now = Date.now();
@@ -283,25 +360,38 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
     if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
     const statusNow = String(snap.get("status") ?? "expired");
-    const prevBalance = Number(snap.get("balanceDue") ?? 0);
+    const dues = readDues(snap);
     const base = statusNow === "active" || statusNow === "grace" ? Math.max(prevUntil, now) : now;
     const paidUntilMs = base + days * DAY_MS;
-    const balanceDue = prevBalance + charge;
-    tx.update(ref, {
+    const planDue = dues.planDue;
+    const extensionDue = paidNow ? dues.extensionDue : dues.extensionDue + charge;
+    const balanceDue = totalDue(planDue, extensionDue);
+    const prevPaid = Number(snap.get("paidAmount") ?? 0);
+
+    const patch: Record<string, unknown> = {
       paidUntilMs,
+      planDue,
+      extensionDue,
       balanceDue,
       status: "grace",
       graceUntilMs: paidUntilMs,
       approvalStatus: "approved",
       approvedAtMs: now,
       updatedAtMs: now,
-    });
+    };
+    if (paidNow) {
+      patch.paidAmount = prevPaid + charge;
+      patch.lastPaymentAmount = charge;
+      patch.lastPaymentMs = now;
+    }
+    tx.update(ref, patch);
     tx.set(ref.collection("payments").doc(), {
-      amount: 0,
+      amount: paidNow ? charge : 0,
       kind: "extension",
       daysGranted: days,
-      balanceAdded: charge,
+      balanceAdded: paidNow ? 0 : charge,
       note: ledgerNote,
+      paidNow,
       atMs: now,
       byUid: owner.uid,
       collectedByUid: owner.uid,
@@ -310,21 +400,33 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
       locationName: site.locationName,
       channel: site.locationId === OWNER_DESK_OUTLET.locationId ? "desk" : "pos",
     });
-    return { paidUntilMs, status: "grace" as const, balanceDue, balanceAdded: charge, daysGranted: days };
+    return {
+      paidUntilMs,
+      status: "grace" as const,
+      balanceDue,
+      planDue,
+      extensionDue,
+      balanceAdded: paidNow ? 0 : charge,
+      amountCollected: paidNow ? charge : 0,
+      daysGranted: days,
+      paidNow,
+    };
   });
 
   await writeAudit({
     action: "grant_day_extension",
     adminEmail: owner.email,
     targetUid: customerId,
-    detail: `${days}d charge ${charge} note=${ledgerNote}`,
+    detail: `${days}d ${paidNow ? "paid" : "charged"} ${charge} note=${ledgerNote}`,
   });
 
   const customer = await ref.get();
   await sendToToken(
     customer.get("fcmToken") as string | undefined,
     "GlobalNetwork service updated",
-    `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${new Date(result.paidUntilMs).toLocaleDateString()}. EC$${charge} was added to your balance.`,
+    paidNow
+      ? `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${new Date(result.paidUntilMs).toLocaleDateString()}. EC$${charge} was collected.`
+      : `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${new Date(result.paidUntilMs).toLocaleDateString()}. EC$${charge} was added to your extension balance.`,
     { type: "subscription", customerId },
   );
 
@@ -386,6 +488,8 @@ export const linkCustomerAccount = onCall(CALLABLE, async (request) => {
       planDays: 0,
       feeAmount: 0,
       paidAmount: 0,
+      planDue: 0,
+      extensionDue: 0,
       balanceDue: 0,
       paidUntilMs: null,
       graceUntilMs: null,

@@ -18,9 +18,11 @@ type Receipt = {
   days: number
   paidUntilMs: number
   balanceDue: number
+  planDue?: number
+  extensionDue?: number
   locationName: string
   atMs: number
-  kind: 'collect' | 'extend'
+  kind: 'collect' | 'extend' | 'extend-paid'
   balanceAdded?: number
 }
 
@@ -252,7 +254,8 @@ function PosShell({
   const fullCycle = () => {
     if (!live) return
     setDays(String(live.planDays || 30))
-    setAmount(String(live.feeAmount || live.balanceDue || ''))
+    const target = live.feeAmount + (live.extensionDue > 0 ? live.extensionDue : 0)
+    setAmount(String(target || live.feeAmount || ''))
   }
 
   const collect = async () => {
@@ -261,6 +264,10 @@ function PosShell({
     const grant = Math.floor(Number(days))
     if (!Number.isFinite(paid) || paid < 0) {
       setErr('Enter the EC$ amount paid.')
+      return
+    }
+    if (live.feeAmount > 0 && paid + 1e-9 < live.feeAmount) {
+      setErr(`Plan collect requires the full fee of ${formatEc(live.feeAmount)}. Partial plan payments are blocked.`)
       return
     }
     if (!Number.isFinite(grant) || grant < 1) {
@@ -284,6 +291,8 @@ function PosShell({
         days: grant,
         paidUntilMs: res.paidUntilMs,
         balanceDue: res.balanceDue,
+        planDue: res.planDue,
+        extensionDue: res.extensionDue,
         locationName: site.name,
         atMs: Date.now(),
         kind: 'collect',
@@ -297,7 +306,7 @@ function PosShell({
     }
   }
 
-  const extend = async () => {
+  const extend = async (paidNow: boolean) => {
     if (!live || !site) return
     const grant = Math.floor(Number(days))
     if (!Number.isFinite(grant) || grant < 1) {
@@ -311,18 +320,21 @@ function PosShell({
         customerId: live.id,
         days: grant,
         note,
+        paidNow,
         locationId: site.id,
         locationName: site.name,
       })
       setReceipt({
         customerName: live.name,
-        amount: 0,
+        amount: paidNow ? res.amountCollected || grant * DAY_EXTENSION_RATE_XCD : 0,
         days: res.daysGranted,
         paidUntilMs: res.paidUntilMs,
         balanceDue: res.balanceDue,
+        planDue: res.planDue,
+        extensionDue: res.extensionDue,
         locationName: site.name,
         atMs: Date.now(),
-        kind: 'extend',
+        kind: paidNow ? 'extend-paid' : 'extend',
         balanceAdded: res.balanceAdded,
       })
       setScreen('receipt')
@@ -425,7 +437,15 @@ function PosShell({
                   onClick={() => {
                     setPicked(c)
                     setDays(String(c.planDays || 30))
-                    setAmount(c.balanceDue > 0 ? String(c.balanceDue) : String(c.feeAmount || ''))
+                    setAmount(
+                      String(
+                        c.feeAmount > 0
+                          ? c.feeAmount + (c.extensionDue > 0 ? c.extensionDue : 0)
+                          : c.balanceDue > 0
+                            ? c.balanceDue
+                            : c.feeAmount || '',
+                      ),
+                    )
                     setScreen('pay')
                     setErr(null)
                   }}
@@ -462,7 +482,15 @@ function PosShell({
               </div>
               <ul className="facts">
                 <li>
-                  <span>Balance due</span>
+                  <span>Plan due</span>
+                  <strong>{formatEc(live.planDue)}</strong>
+                </li>
+                <li>
+                  <span>Extensions</span>
+                  <strong>{formatEc(live.extensionDue)}</strong>
+                </li>
+                <li>
+                  <span>Total</span>
                   <strong>{formatEc(live.balanceDue)}</strong>
                 </li>
                 <li>
@@ -500,21 +528,26 @@ function PosShell({
                 <input value={days} onChange={(e) => setDays(e.target.value)} />
               </label>
               <button className="btn ghost" type="button" onClick={fullCycle}>
-                Full cycle · {live.planDays || 30}d · {formatEc(live.feeAmount)}
+                Full plan · {live.planDays || 30}d · {formatEc(live.feeAmount)}
+                {live.extensionDue > 0 ? ` + ext ${formatEc(live.extensionDue)}` : ''}
               </button>
               <input className="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" />
               <button className="btn primary huge" type="button" disabled={busy} onClick={() => void collect()}>
-                {busy ? 'Posting…' : `Collect ${formatEc(Number(amount) || 0)}`}
+                {busy ? 'Posting…' : `Collect plan ${formatEc(Number(amount) || 0)}`}
               </button>
               {canExtend && (
-                <button className="btn ghost" type="button" disabled={busy} onClick={() => void extend()}>
-                  Extend {days || '—'}d · no cash · {formatEc((Math.floor(Number(days)) || 0) * DAY_EXTENSION_RATE_XCD)} on
-                  balance
-                </button>
+                <>
+                  <button className="btn ghost" type="button" disabled={busy} onClick={() => void extend(false)}>
+                    Charge to balance · {days || '—'}d · {formatEc((Math.floor(Number(days)) || 0) * DAY_EXTENSION_RATE_XCD)}
+                  </button>
+                  <button className="btn ghost" type="button" disabled={busy} onClick={() => void extend(true)}>
+                    Collect extension now · {days || '—'}d · {formatEc((Math.floor(Number(days)) || 0) * DAY_EXTENSION_RATE_XCD)}
+                  </button>
+                </>
               )}
               <p className="muted tiny">
-                Collect posts cash via extendSubscription. Extend adds EC${DAY_EXTENSION_RATE_XCD}/day to what they owe —
-                it is not paid-in.
+                Plan collect requires the full package fee (partial plan payments blocked). Paying fee + extension due in
+                one amount clears both. Extension charge stacks on extension due only — it never clears plan due.
               </p>
             </article>
           </div>
@@ -526,8 +559,18 @@ function PosShell({
           <article className="receipt" id="gn-receipt">
             <img src={`${import.meta.env.BASE_URL}logo-gn.png`} alt="" width={48} height={48} />
             <p className="eyebrow">GlobalNetwork · Antigua</p>
-            <h1>{receipt.kind === 'collect' ? 'Payment received' : 'Days extended'}</h1>
-            <p className="big">{receipt.kind === 'collect' ? formatEc(receipt.amount) : `${receipt.days} days`}</p>
+            <h1>
+              {receipt.kind === 'collect'
+                ? 'Plan payment received'
+                : receipt.kind === 'extend-paid'
+                  ? 'Extension collected'
+                  : 'Extension charged to balance'}
+            </h1>
+            <p className="big">
+              {receipt.kind === 'extend'
+                ? `${receipt.days} days`
+                : formatEc(receipt.amount)}
+            </p>
             <ul>
               <li>
                 <span>Customer</span>
@@ -542,12 +585,20 @@ function PosShell({
                 <b>{fmtDate(receipt.paidUntilMs)}</b>
               </li>
               <li>
-                <span>Balance remaining</span>
+                <span>Plan due</span>
+                <b>{formatEc(receipt.planDue ?? 0)}</b>
+              </li>
+              <li>
+                <span>Extensions</span>
+                <b>{formatEc(receipt.extensionDue ?? 0)}</b>
+              </li>
+              <li>
+                <span>Total due</span>
                 <b>{formatEc(receipt.balanceDue)}</b>
               </li>
               {receipt.kind === 'extend' && (
                 <li>
-                  <span>Added to balance</span>
+                  <span>Added to extension</span>
                   <b>{formatEc(receipt.balanceAdded || 0)}</b>
                 </li>
               )}

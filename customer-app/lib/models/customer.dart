@@ -56,7 +56,7 @@ class CustomerAccount {
       case 'active':
         return 'Internet is on';
       case 'grace':
-        return 'Internet is on (partial payment)';
+        return 'Internet is on (day extension)';
       case 'suspended':
         return 'Account paused';
       default:
@@ -72,12 +72,14 @@ class CustomerAccount {
         if (days == 1) return '1 day left on your package.';
         return '$days days left on your package.';
       case 'grace':
-        return 'You are on the line with a partial payment. ${ec(balanceDue)} is still due.';
+        return balanceDue > 0
+            ? 'You are on a day extension. ${ec(balanceDue)} is still due (plan and/or extensions).'
+            : 'You are on a day extension. Chat with GlobalNetwork if you need to renew.';
       case 'suspended':
         return 'GlobalNetwork paused this account. Chat to get it turned back on.';
       default:
         if (feeAmount > 0) {
-          return 'Pay ${ec(feeAmount)} or ask GlobalNetwork to add days if you cannot pay the full fee.';
+          return 'Pay the full package fee of ${ec(feeAmount)} to renew. Partial plan payments are not accepted.';
         }
         return 'Your record is open. GlobalNetwork will add your package and days from the owner desk.';
     }
@@ -164,15 +166,16 @@ class PaymentRecord {
   String get kindLabel {
     switch (kind) {
       case 'partial':
-        return 'Partial';
+        return 'Partial (legacy)';
       case 'grace':
         return 'Grace';
       case 'adjust':
         return 'Time adjust';
       case 'extension':
-        return 'Day extension';
+        if (amount > 0) return 'Extension paid';
+        return 'Extension charged';
       default:
-        return 'Paid in full';
+        return 'Plan due';
     }
   }
 
@@ -182,7 +185,10 @@ class PaymentRecord {
 
   String get daysLabel {
     if (kind == 'extension') {
-      return '$daysGranted days · ${CustomerAccount.ec(balanceAdded)} added to balance';
+      if (amount > 0) {
+        return '$daysGranted days · ${CustomerAccount.ec(amount)} collected';
+      }
+      return '$daysGranted days · ${CustomerAccount.ec(balanceAdded)} charged to extension';
     }
     if (daysGranted == 0) return 'No days added';
     if (daysGranted == 1) return '1 day granted';

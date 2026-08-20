@@ -55,9 +55,22 @@ export function CustomerPage({
   useEffect(() => {
     if (!customer) return
     setDays(String(customer.planDays || 30))
-    setAmount(customer.balanceDue > 0 ? String(customer.balanceDue) : String(customer.feeAmount || ''))
+    const collectTarget =
+      customer.feeAmount > 0
+        ? customer.feeAmount + (customer.extensionDue > 0 ? customer.extensionDue : 0)
+        : customer.balanceDue > 0
+          ? customer.balanceDue
+          : ''
+    setAmount(collectTarget === '' ? '' : String(collectTarget))
     setRemainDays(String(Math.max(0, repo.daysLeft(customer.paidUntilMs, Date.now()))))
-  }, [customer?.id, customer?.planDays, customer?.feeAmount, customer?.balanceDue, customer?.paidUntilMs])
+  }, [
+    customer?.id,
+    customer?.planDays,
+    customer?.feeAmount,
+    customer?.balanceDue,
+    customer?.extensionDue,
+    customer?.paidUntilMs,
+  ])
 
   const relatedIssues = useMemo(() => issues.filter((i) => i.customerId === id), [issues, id])
   const catalogPlans = useMemo(() => {
@@ -113,23 +126,35 @@ export function CustomerPage({
         locationName: 'Owner desk',
       })
       setNote('')
-      return `Service through ${fmtDate(res.paidUntilMs)} · ${res.status} · balance ${repo.formatEc(res.balanceDue)}`
+      const extNote =
+        (res.extensionCollected || 0) > 0
+          ? ` · also cleared ${repo.formatEc(res.extensionCollected || 0)} extension`
+          : res.extensionDue > 0
+            ? ` · extension still ${repo.formatEc(res.extensionDue)}`
+            : ''
+      return `Plan collected · through ${fmtDate(res.paidUntilMs)} · total due ${repo.formatEc(res.balanceDue)}${extNote}`
     })
 
   const extendN = Math.floor(Number(extendDays))
   const extendCharge =
     Number.isFinite(extendN) && extendN >= 1 ? extendN * repo.DAY_EXTENSION_RATE_XCD : null
 
-  const grantExtension = () =>
+  const grantExtension = (paidNow: boolean) =>
     run(async () => {
       if (!Number.isFinite(extendN) || extendN < 1) throw new Error('Enter how many days to extend.')
       const res = await repo.grantDayExtension({
         customerId: customer.id,
         days: extendN,
         note: note || undefined,
+        paidNow,
+        locationId: 'owner-desk',
+        locationName: 'Owner desk',
       })
       setNote('')
-      return `Extended ${res.daysGranted}d · ${res.status} · ${repo.formatEc(res.balanceAdded)} added to balance · now ${repo.formatEc(res.balanceDue)} owed · through ${fmtDate(res.paidUntilMs)}`
+      if (paidNow) {
+        return `Extended ${res.daysGranted}d · collected ${repo.formatEc(res.amountCollected || extendCharge || 0)} · plan due still ${repo.formatEc(res.planDue)} · through ${fmtDate(res.paidUntilMs)}`
+      }
+      return `Extended ${res.daysGranted}d · ${repo.formatEc(res.balanceAdded)} charged to extension · plan due ${repo.formatEc(res.planDue)} · total ${repo.formatEc(res.balanceDue)} · through ${fmtDate(res.paidUntilMs)}`
     })
 
   const send = async (e: FormEvent) => {
@@ -224,13 +249,25 @@ export function CustomerPage({
       <div className="cycle-hero">
         <div className="cycle-hero-top">
           <span>Current cycle</span>
-          <span>
-            {pct}% remaining · balance {repo.formatEc(customer.balanceDue)}
-          </span>
+          <span>{pct}% remaining</span>
         </div>
         <div className="cycle-track lg glow-bar">
           <span style={{ width: `${pct}%` }} />
         </div>
+        <ul className="dues-row" style={{ marginTop: '0.75rem' }}>
+          <li>
+            <span>Plan due</span>
+            <strong>{repo.formatEc(customer.planDue)}</strong>
+          </li>
+          <li>
+            <span>Extensions</span>
+            <strong>{repo.formatEc(customer.extensionDue)}</strong>
+          </li>
+          <li>
+            <span>Total</span>
+            <strong>{repo.formatEc(customer.balanceDue)}</strong>
+          </li>
+        </ul>
       </div>
 
       {err && <p className="fail">{err}</p>}
@@ -345,16 +382,37 @@ export function CustomerPage({
             Assign a package above before Collect full — fee is still EC$0.
           </p>
         )}
+        <p className="muted tiny" style={{ marginBottom: '0.75rem' }}>
+          Plan collect = full package fee only (no partial plan payments). Paying the plan clears plan due; if you collect
+          fee + extension in one amount, extension due clears too. Extension cash alone never clears plan due.
+        </p>
         <div className="quick-renew">
           <button
             className="btn btn-primary"
             type="button"
             disabled={busy || needsPackage}
             title={needsPackage ? 'Assign a package first' : undefined}
-            onClick={() => void extend(customer.planDays || 30, customer.feeAmount, 'Full plan renewal')}
+            onClick={() =>
+              void extend(
+                customer.planDays || 30,
+                customer.feeAmount + (customer.extensionDue > 0 ? customer.extensionDue : 0),
+                customer.extensionDue > 0 ? 'Full plan + extension due' : 'Full plan renewal',
+              )
+            }
           >
             Collect full {customer.planDays || 30}d · {repo.formatEc(customer.feeAmount)}
+            {customer.extensionDue > 0 ? ` + ext ${repo.formatEc(customer.extensionDue)}` : ''}
           </button>
+          {customer.extensionDue > 0 && !needsPackage && (
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => void extend(customer.planDays || 30, customer.feeAmount, 'Full plan renewal')}
+            >
+              Plan only · {repo.formatEc(customer.feeAmount)}
+            </button>
+          )}
           {customer.status === 'suspended' ? (
             <button
               className="btn btn-ghost"
@@ -383,14 +441,27 @@ export function CustomerPage({
             Days to extend
             <input value={extendDays} onChange={(e) => setExtendDays(e.target.value)} placeholder="e.g. 3" />
           </label>
-          <button className="btn btn-ghost" type="button" disabled={busy || extendCharge == null} onClick={() => void grantExtension()}>
-            Extend
+          <button
+            className="btn btn-ghost"
+            type="button"
+            disabled={busy || extendCharge == null}
+            onClick={() => void grantExtension(false)}
+          >
+            Charge to balance
+          </button>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={busy || extendCharge == null}
+            onClick={() => void grantExtension(true)}
+          >
+            Collect extension now
           </button>
         </div>
         <p className="muted tiny">
           {extendCharge != null
-            ? `EC$${repo.DAY_EXTENSION_RATE_XCD} × ${extendN} days = ${repo.formatEc(extendCharge)} added to balance`
-            : `EC$${repo.DAY_EXTENSION_RATE_XCD} per day added to what they owe when they next pay.`}
+            ? `EC$${repo.DAY_EXTENSION_RATE_XCD} × ${extendN} = ${repo.formatEc(extendCharge)}. Charge stacks on extension due (plan due unchanged). Collect now takes cash and does not add to extension due.`
+            : `EC$${repo.DAY_EXTENSION_RATE_XCD}/day. Charge to balance or collect extension now.`}
         </p>
         <div className="form-row" style={{ marginTop: '1rem' }}>
           <label>
@@ -398,20 +469,20 @@ export function CustomerPage({
             <input value={days} onChange={(e) => setDays(e.target.value)} />
           </label>
           <label>
-            Amount paid (EC$)
+            Amount paid (EC$) — full plan fee min.
             <input value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
           <label>
             Note
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Waiting on rest of fee" />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Receipt note" />
           </label>
           <button
             className="btn btn-primary"
             type="button"
-            disabled={busy}
+            disabled={busy || needsPackage}
             onClick={() => void extend(Number(days), Number(amount || 0), note)}
           >
-            Apply
+            Collect plan
           </button>
         </div>
       </section>
@@ -626,9 +697,11 @@ export function CustomerPage({
               <li key={p.id}>
                 <span>
                   <strong>
-                    {p.kind === 'extension' ? `${repo.formatEc(p.balanceAdded || 0)} owed` : repo.formatEc(p.amount)}
+                    {p.kind === 'extension' && !(Number(p.amount) > 0)
+                      ? `${repo.formatEc(p.balanceAdded || 0)} owed`
+                      : repo.formatEc(p.amount)}
                   </strong>{' '}
-                  · {p.kind} · {p.daysGranted}d
+                  · {repo.paymentKindLabel(p)} · {p.daysGranted}d
                   {p.note ? <span className="muted"> — {p.note}</span> : null}
                   {p.locationName ? <span className="muted"> · {p.locationName}</span> : null}
                 </span>

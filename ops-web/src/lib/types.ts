@@ -17,6 +17,11 @@ export type Customer = {
   planDays: number
   feeAmount: number
   paidAmount: number
+  /** Full package fee owed (no partial plan payments). */
+  planDue: number
+  /** Unpaid day-extension charges (EC$6/day stacks). */
+  extensionDue: number
+  /** Roster total: planDue + extensionDue. */
   balanceDue: number
   paidUntilMs: number | null
   graceUntilMs: number | null
@@ -47,9 +52,10 @@ export type Plan = {
   active: boolean
 }
 
-/** Unpaid day-extension rate billed onto balanceDue (XCD / EC$). */
+/** Day-extension rate (XCD / EC$). Unpaid stacks on extensionDue. Balance = planDue + extensionDue. */
 export const DAY_EXTENSION_RATE_XCD = 6
 
+/** Legacy partial kept for old ledger rows; new plan collects are always `full`. */
 export type PaymentKind = 'full' | 'partial' | 'grace' | 'adjust' | 'extension'
 
 export type Payment = {
@@ -68,6 +74,7 @@ export type Payment = {
   collectedByUid?: string
   collectedByEmail?: string
   channel?: string
+  paidNow?: boolean
 }
 
 export type PosOutlet = {

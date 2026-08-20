@@ -36,7 +36,17 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     planDays: Number(data.planDays ?? 30),
     feeAmount: Number(data.feeAmount ?? 0),
     paidAmount: Number(data.paidAmount ?? 0),
-    balanceDue: Number(data.balanceDue ?? 0),
+    planDue: (() => {
+      if (data.planDue != null || data.extensionDue != null) return Math.max(0, Number(data.planDue ?? 0))
+      return Math.max(0, Number(data.balanceDue ?? 0))
+    })(),
+    extensionDue: data.planDue != null || data.extensionDue != null ? Math.max(0, Number(data.extensionDue ?? 0)) : 0,
+    balanceDue: (() => {
+      if (data.planDue != null || data.extensionDue != null) {
+        return Math.max(0, Number(data.planDue ?? 0)) + Math.max(0, Number(data.extensionDue ?? 0))
+      }
+      return Number(data.balanceDue ?? 0)
+    })(),
     paidUntilMs: data.paidUntilMs == null ? null : Number(data.paidUntilMs),
     graceUntilMs: data.graceUntilMs == null ? null : Number(data.graceUntilMs),
     lastSeenMs: Number(data.lastSeenMs ?? 0),
@@ -176,6 +186,7 @@ export function observePayments(customerId: string, onData: (rows: Payment[]) =>
           collectedByUid: String(data.collectedByUid ?? data.byUid ?? ''),
           collectedByEmail: String(data.collectedByEmail ?? data.byEmail ?? ''),
           channel: String(data.channel ?? data.source ?? ''),
+          paidNow: data.paidNow === true,
         }
       }),
     )
@@ -313,7 +324,14 @@ export async function extendSubscription(input: {
   note: string
   locationId?: string
   locationName?: string
-}): Promise<{ paidUntilMs: number; status: CustomerStatus; balanceDue: number }> {
+}): Promise<{
+  paidUntilMs: number
+  status: CustomerStatus
+  balanceDue: number
+  planDue: number
+  extensionDue: number
+  extensionCollected?: number
+}> {
   return callable('extendSubscription', input)
 }
 
@@ -321,10 +339,35 @@ export async function grantDayExtension(input: {
   customerId: string
   days: number
   note?: string
+  /** true = collect days×EC$6 now; false = charge to extensionDue */
+  paidNow?: boolean
   locationId?: string
   locationName?: string
-}): Promise<{ paidUntilMs: number; status: CustomerStatus; balanceDue: number; balanceAdded: number; daysGranted: number }> {
+}): Promise<{
+  paidUntilMs: number
+  status: CustomerStatus
+  balanceDue: number
+  planDue: number
+  extensionDue: number
+  balanceAdded: number
+  amountCollected?: number
+  daysGranted: number
+  paidNow?: boolean
+}> {
   return callable('grantDayExtension', input)
+}
+
+/** Human label for payment ledger rows (plan vs extension). */
+export function paymentKindLabel(p: { kind: PaymentKind; amount?: number; balanceAdded?: number; paidNow?: boolean }): string {
+  if (p.kind === 'full') return 'plan due'
+  if (p.kind === 'extension') {
+    if (p.paidNow === true || (Number(p.amount) || 0) > 0) return 'extension paid'
+    return 'extension charged'
+  }
+  if (p.kind === 'partial') return 'partial (legacy)'
+  if (p.kind === 'grace') return 'grace'
+  if (p.kind === 'adjust') return 'adjust'
+  return p.kind
 }
 
 function paymentKind(raw: unknown): PaymentKind {
@@ -676,6 +719,7 @@ export function observeCollectionPayments(
               collectedByUid: String(data.collectedByUid ?? data.byUid ?? ''),
               collectedByEmail: String(data.collectedByEmail ?? data.byEmail ?? ''),
               channel: String(data.channel ?? data.source ?? ''),
+              paidNow: data.paidNow === true,
             })
           }
         }),

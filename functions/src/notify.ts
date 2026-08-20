@@ -118,7 +118,20 @@ export const expireSubscriptions = onSchedule("every 24 hours", async () => {
       else next = "expired";
     }
     if (next !== status) {
-      await doc.ref.update({ status: next, lastExpireSweepMs: now });
+      const feeAmount = Number(doc.get("feeAmount") ?? 0);
+      const planAssigned = Boolean(String(doc.get("planId") ?? "").trim()) || feeAmount > 0;
+      const hasSplit = doc.get("planDue") != null || doc.get("extensionDue") != null;
+      const fee = planAssigned && feeAmount > 0 ? feeAmount : 0;
+      const extensionDue = hasSplit ? Math.max(0, Number(doc.get("extensionDue") ?? 0)) : 0;
+      const planDue = fee;
+      const balanceDue = Math.max(0, planDue) + Math.max(0, extensionDue);
+      await doc.ref.update({
+        status: next,
+        lastExpireSweepMs: now,
+        planDue,
+        extensionDue,
+        balanceDue,
+      });
       flipped += 1;
       const left = Math.ceil((paidUntil - now) / (24 * 60 * 60 * 1000));
       if (left <= 3) {
