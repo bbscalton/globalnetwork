@@ -86,6 +86,7 @@ export function DevicesDesk() {
 
   const wr841 = SUPPORTED_DEVICES.find((d) => d.id === 'wr841n-v14')
   const mw301r = SUPPORTED_DEVICES.find((d) => d.id === 'mw301r-v2')
+  const pixLinkAc1200 = SUPPORTED_DEVICES.find((d) => d.id === 'pix-link-ac1200')
   const r470 = SUPPORTED_DEVICES.find((d) => d.id === 'tl-r470t-v6')
   const r480 = SUPPORTED_DEVICES.find((d) => d.id === 'tl-r480t-v7')
 
@@ -112,6 +113,7 @@ export function DevicesDesk() {
           <h2>
             {wr841.brand} {wr841.name}
             {mw301r ? ` · ${mw301r.brand} ${mw301r.sku}` : ''}
+            {pixLinkAc1200 ? ` · ${pixLinkAc1200.brand} ${pixLinkAc1200.name}` : ''}
             {r470 ? ` · ${r470.sku}` : ''}
             {r480 ? ` · ${r480.sku}` : ''}
           </h2>
@@ -197,7 +199,7 @@ export function DevicesDesk() {
       <div className="desk-toolbar">
         <input
           className="search search-lg"
-          placeholder="Search litebeam, hap, wr841, mw301r, nanostation, hex, omada…"
+          placeholder="Search litebeam, hap, wr841, mw301r, pix-link, nanostation, hex, omada…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           autoComplete="off"
