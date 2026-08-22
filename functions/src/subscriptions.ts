@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DAY_MS, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
+import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, paidUntilAfterGrant, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
 import { customerByUid, customersWithEmail, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
 
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
@@ -251,8 +251,8 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
     const prevPaid = Number(snap.get("paidAmount") ?? 0);
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
     const statusNow = String(snap.get("status") ?? "expired");
-    const base = statusNow === "active" || statusNow === "grace" ? Math.max(prevUntil, now) : now;
-    const paidUntilMs = base + days * DAY_MS;
+    const stillActive = (statusNow === "active" || statusNow === "grace") && prevUntil > now;
+    const paidUntilMs = paidUntilAfterGrant(prevUntil, days, now, stillActive);
 
     let extensionDue = dues.extensionDue;
     const towardExtension = Math.max(0, amountPaid - feeAmount);
@@ -361,8 +361,8 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
     const statusNow = String(snap.get("status") ?? "expired");
     const dues = readDues(snap);
-    const base = statusNow === "active" || statusNow === "grace" ? Math.max(prevUntil, now) : now;
-    const paidUntilMs = base + days * DAY_MS;
+    const stillActive = (statusNow === "active" || statusNow === "grace") && prevUntil > now;
+    const paidUntilMs = paidUntilAfterGrant(prevUntil, days, now, stillActive);
     const planDue = dues.planDue;
     const extensionDue = paidNow ? dues.extensionDue : dues.extensionDue + charge;
     const balanceDue = totalDue(planDue, extensionDue);

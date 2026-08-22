@@ -45,8 +45,17 @@ class CustomerAccount {
 
   int daysLeft() {
     final until = paidUntilMs;
-    if (until == null) return 0;
-    return ((until - DateTime.now().millisecondsSinceEpoch) / 86400000).ceil();
+    if (until == null || until <= 0) return 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (until <= now) return 0;
+    // Antigua AST (UTC−4, no DST): drop a day at local midnight, not after 24 wall-clock hours.
+    const offsetMs = -4 * 60 * 60 * 1000;
+    final a = DateTime.fromMillisecondsSinceEpoch(now + offsetMs, isUtc: true);
+    final b = DateTime.fromMillisecondsSinceEpoch(until + offsetMs, isUtc: true);
+    final utcA = DateTime.utc(a.year, a.month, a.day);
+    final utcB = DateTime.utc(b.year, b.month, b.day);
+    final diff = utcB.difference(utcA).inDays;
+    return diff < 0 ? 0 : diff;
   }
 
   bool get internetOn => status == 'active' || status == 'grace';

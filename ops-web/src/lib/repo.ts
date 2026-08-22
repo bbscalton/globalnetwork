@@ -621,8 +621,14 @@ export function formatEc(amount: number): string {
 }
 
 export function daysLeft(paidUntilMs: number | null, now: number): number {
-  if (!paidUntilMs) return 0
-  return Math.ceil((paidUntilMs - now) / (24 * 60 * 60 * 1000))
+  if (!paidUntilMs || !Number.isFinite(paidUntilMs) || paidUntilMs <= now) return 0
+  // Antigua (AST, UTC−4, no DST): count whole local calendar days so the number drops at midnight.
+  const offset = -4 * 60 * 60 * 1000
+  const a = new Date(now + offset)
+  const b = new Date(paidUntilMs + offset)
+  const utcA = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate())
+  const utcB = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate())
+  return Math.max(0, Math.round((utcB - utcA) / (24 * 60 * 60 * 1000)))
 }
 
 function asOutlet(id: string, data: Record<string, unknown>): PosOutlet {

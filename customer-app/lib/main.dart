@@ -119,11 +119,17 @@ class _GateState extends State<Gate> {
   var linking = false;
   StreamSubscription<User?>? _authSub;
   StreamSubscription<CustomerAccount?>? _customerSub;
+  Timer? _dayTick;
+  DateTime? _lastHeartbeat;
 
   @override
   void initState() {
     super.initState();
     api = GnApi(r2BaseUrl: r2BaseUrl);
+    _dayTick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted || account == null) return;
+      setState(() {});
+    });
     _authSub = api.authChanges().listen((next) {
       if (!mounted) return;
       setState(() {
@@ -140,6 +146,7 @@ class _GateState extends State<Gate> {
 
   @override
   void dispose() {
+    _dayTick?.cancel();
     _authSub?.cancel();
     _customerSub?.cancel();
     super.dispose();
@@ -157,7 +164,12 @@ class _GateState extends State<Gate> {
         if (!mounted) return;
         setState(() => account = value);
         if (value != null) {
-          api.heartbeat(value.id);
+          final now = DateTime.now();
+          final due = _lastHeartbeat == null || now.difference(_lastHeartbeat!) > const Duration(minutes: 2);
+          if (due) {
+            _lastHeartbeat = now;
+            api.heartbeat(value.id).ignore();
+          }
         }
       });
     } on FirebaseFunctionsException catch (e) {

@@ -19,6 +19,47 @@ export const CURRENCY = "XCD";
 export const DAY_MS = 24 * 60 * 60 * 1000;
 /** Unpaid day-extension rate billed onto extensionDue (XCD / EC$). Balance = planDue + extensionDue. */
 export const DAY_EXTENSION_RATE_XCD = 6;
+/** Antigua has no DST; AST = UTC−4. Used so “days left” rolls at local midnight. */
+export const ANTIGUA_OFFSET_MS = -4 * 60 * 60 * 1000;
+
+export type Ymd = { y: number; m: number; d: number };
+
+/** Calendar Y/M/D in America/Antigua for an instant. */
+export function antiguaParts(ms: number): Ymd {
+  const shifted = new Date(ms + ANTIGUA_OFFSET_MS);
+  return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth() + 1, d: shifted.getUTCDate() };
+}
+
+/** End of that Antigua calendar day (23:59:59.999 AST). */
+export function endOfAntiguaDay(parts: Ymd): number {
+  return Date.UTC(parts.y, parts.m - 1, parts.d, 23, 59, 59, 999) - ANTIGUA_OFFSET_MS;
+}
+
+export function addAntiguaDays(parts: Ymd, days: number): Ymd {
+  const utc = Date.UTC(parts.y, parts.m - 1, parts.d) + days * DAY_MS;
+  const d = new Date(utc);
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() };
+}
+
+/**
+ * Days remaining by Antigua calendar date (not wall-clock 24h slices).
+ * Same calendar day as paid-until still counts as 0 once the instant has passed;
+ * before that, diff of calendar dates (grant day of N days → N on day 0, N−1 after local midnight).
+ */
+export function calendarDaysLeft(paidUntilMs: number | null | undefined, now = Date.now()): number {
+  if (!paidUntilMs || !Number.isFinite(paidUntilMs) || paidUntilMs <= now) return 0;
+  const a = antiguaParts(now);
+  const b = antiguaParts(paidUntilMs);
+  const diff = Math.round((Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d)) / DAY_MS);
+  return Math.max(0, diff);
+}
+
+/** Extend from the later of “now” or an existing paid-until, by whole Antigua calendar days ending EOD. */
+export function paidUntilAfterGrant(prevUntilMs: number, days: number, now = Date.now(), stillActive = false): number {
+  const baseParts =
+    stillActive && prevUntilMs > now ? antiguaParts(prevUntilMs) : antiguaParts(now);
+  return endOfAntiguaDay(addAntiguaDays(baseParts, days));
+}
 
 function firebaseApp() {
   return getApps().length ? getApp() : initializeApp();

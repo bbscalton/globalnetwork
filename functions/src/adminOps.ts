@@ -13,6 +13,10 @@ import {
   DAY_MS,
   DEFAULT_ORG_ID,
   DEFAULT_PLANS,
+  calendarDaysLeft,
+  endOfAntiguaDay,
+  addAntiguaDays,
+  antiguaParts,
   db,
   requireOwner,
   sendToToken,
@@ -247,8 +251,7 @@ function requireTidyPhrase(action: string, confirm: string): void {
 }
 
 function remainingDays(paidUntilMs: number | null, now: number): number {
-  if (!paidUntilMs || paidUntilMs <= now) return 0;
-  return Math.ceil((paidUntilMs - now) / DAY_MS);
+  return calendarDaysLeft(paidUntilMs, now);
 }
 
 function statusFromTimestamps(paidUntilMs: number, graceUntilMs: number, now: number): "active" | "grace" | "expired" {
@@ -321,14 +324,14 @@ export const adjustSubscription = onCall(CALLABLE, async (request) => {
       if (!Number.isFinite(days) || days < 0) {
         throw new HttpsError("invalid-argument", "daysRemaining must be 0 or more.");
       }
-      paidUntilMs = days === 0 ? null : now + days * DAY_MS;
+      paidUntilMs = days === 0 ? null : endOfAntiguaDay(addAntiguaDays(antiguaParts(now), days));
     } else if (hasAddDays) {
       const addDays = Math.floor(Number(request.data.addDays));
       if (!Number.isFinite(addDays) || addDays === 0) {
         throw new HttpsError("invalid-argument", "addDays must be a non-zero integer.");
       }
-      const base = prevUntil > now ? prevUntil : now;
-      const next = base + addDays * DAY_MS;
+      const baseMs = prevUntil > now ? prevUntil : now;
+      const next = endOfAntiguaDay(addAntiguaDays(antiguaParts(baseMs), addDays));
       paidUntilMs = next > now ? next : null;
     }
 

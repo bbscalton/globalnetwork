@@ -100,7 +100,7 @@ async function ensureChatIssue(customerId: string, name: string, kind: string, t
   await customerRef.update({ openChatIssueId: ref.id });
 }
 
-export const expireSubscriptions = onSchedule("every 24 hours", async () => {
+export const expireSubscriptions = onSchedule("every 1 hours", async () => {
   const now = Date.now();
   const snap = await db.collection("customers").get();
   const omadaCfg = await db.collection("adminConfig").doc("omadaEr7206").get();
