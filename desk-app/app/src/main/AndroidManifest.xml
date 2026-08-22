@@ -22,42 +22,26 @@
         android:theme="@style/Theme.Desk.Splash"
         android:usesCleartextTraffic="false">
 
+        <!--
+          Primary launcher is a WebView shell. Trusted Web Activity needs Digital Asset Links
+          at https://bbscalton.github.io/.well-known/assetlinks.json, which GitHub Project Pages
+          cannot host (only /globalnetwork/…). Without that, the old TWA launcher exited immediately.
+        -->
         <activity
-            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:name=".DeskWebActivity"
             android:alwaysRetainTaskState="true"
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.Desk.Splash">
-
-            <meta-data
-                android:name="android.support.customtabs.trusted.DEFAULT_URL"
-                android:value="https://bbscalton.github.io/globalnetwork/ops/" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
-                android:resource="@color/colorPrimary" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
-                android:resource="@color/navigationColor" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE"
-                android:resource="@drawable/splash" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR"
-                android:resource="@color/backgroundColor" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION"
-                android:value="300" />
-            <meta-data
-                android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY"
-                android:value="${applicationId}.fileprovider" />
+            android:theme="@style/Theme.Desk.Splash"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -68,10 +52,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name="com.google.androidbrowserhelper.trusted.FocusActivity"
-            android:exported="false" />
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -81,14 +61,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/filepaths" />
         </provider>
-
-        <meta-data
-            android:name="asset_statements"
-            android:resource="@string/asset_statements" />
-        <!-- Prefer Chrome Custom Tabs over Android WebView so Google OAuth is not trapped. -->
-        <meta-data
-            android:name="android.support.customtabs.trusted.FALLBACK_STRATEGY"
-            android:value="customtabs" />
     </application>
 
     <queries>

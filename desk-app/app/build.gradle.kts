@@ -18,11 +18,11 @@ android {
         applicationId = "gn.globalnetwork.desk"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
         ndk {
-            // Same reason as the customer app: one ABI, one installable APK.
-            abiFilters += listOf("arm64-v8a")
+            // Phones (arm64) + local Android emulators (x86_64).
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
 
@@ -37,7 +37,6 @@ android {
                 "lib/armeabi/**",
                 "lib/armeabi-v7a/**",
                 "lib/x86/**",
-                "lib/x86_64/**",
             )
         }
     }
