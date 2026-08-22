@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { formatEc, usePublicPlans } from './usePublicPlans'
 
 const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
 const POS = (import.meta.env.VITE_POS_WEB_URL as string | undefined) || './pos/'
@@ -19,7 +20,7 @@ const NAV = [
   ['#support', 'Support'],
 ] as const
 
-function useReveal() {
+function useReveal(deps: unknown[] = []) {
   useEffect(() => {
     const nodes = document.querySelectorAll<HTMLElement>('[data-reveal]')
     if (!nodes.length) return
@@ -38,14 +39,33 @@ function useReveal() {
       },
       { threshold: 0.14, rootMargin: '0px 0px -8% 0px' },
     )
-    nodes.forEach((el) => io.observe(el))
+    nodes.forEach((el) => {
+      if (!el.classList.contains('is-visible')) io.observe(el)
+    })
     return () => io.disconnect()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
 }
 
 export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
-  useReveal()
+  const { plans, loading: plansLoading, error: plansError } = usePublicPlans()
+  useReveal([plans.length, plansLoading])
+
+  const featuredPlanId = useMemo(() => {
+    if (!plans.length) return null
+    const thirty = plans.find((p) => p.days === 30)
+    if (thirty) return thirty.id
+    return plans[Math.floor((plans.length - 1) / 2)]?.id ?? plans[0].id
+  }, [plans])
+
+  const planHeadline = useMemo(() => {
+    if (!plans.length) return 'Packages in East Caribbean dollars'
+    const days = [...new Set(plans.map((p) => p.days))].sort((a, b) => a - b)
+    if (days.length === 1) return `${days[0]}-day packages in East Caribbean dollars`
+    if (days.length <= 4) return `${days.join(' / ')} days in East Caribbean dollars`
+    return 'Current packages in East Caribbean dollars'
+  }, [plans])
 
   const closeMenu = () => setMenuOpen(false)
 
@@ -108,7 +128,7 @@ export default function App() {
             <h1 className="hero-title">Antigua internet you can see, extend, and manage.</h1>
             <p className="hero-sub">
               GlobalNetwork puts days on your line. Pay a plan, watch days left, chat with the desk, and
-              keep service on if you cannot pay the full fee yet.
+              keep service clear with plan due and day extensions when you need them.
             </p>
             <div className="hero-ctas">
               <a className="btn btn-primary btn-lg" href={WEB_APP}>
@@ -153,7 +173,7 @@ export default function App() {
         <div className="section-grid">
           {[
             ['Days you can see', 'Open the web app and read days left on the line. No guessing when service ends.'],
-            ['Fair when money is tight', 'Cannot pay the full plan? Ask for more days. The rest goes on the next payment.'],
+            ['Plan or extension', 'Pay the full package fee, or ask the desk for day extensions at a daily rate.'],
             ['Chat that stays with your account', 'Message the Antigua desk from the same place you pay and report faults.'],
             ['Photos of the problem', 'File a line issue with pictures so the desk can see what is on the pole or at the house.'],
           ].map(([title, body], i) => (
@@ -175,9 +195,9 @@ export default function App() {
         </header>
         <ol className="steps">
           {[
-            ['Choose a plan', '15, 30, or 90 days, billed in EC$. The desk records the payment against your account.'],
+            ['Choose a plan', 'Pick a package from the catalog, billed in EC$. The desk records the full plan payment.'],
             ['Service days start', 'Your line stays on through the days you paid. Watch the countdown in Manage my service.'],
-            ['Need more time?', 'If the full fee is not ready, ask the desk to extend days. Remaining balance waits for the next payment.'],
+            ['Need more time?', 'Ask the desk for a day extension. Pay it now or have it charged to your extension balance.'],
             ['Talk from the app', 'Chat about billing, outages, or a photo of a fault — without hunting for a phone number.'],
           ].map(([title, body], i) => (
             <li key={title} className="glass-card step-card" data-reveal style={{ transitionDelay: `${i * 70}ms` }}>
@@ -192,31 +212,56 @@ export default function App() {
       <section id="plans" className="section">
         <header className="section-head" data-reveal>
           <p className="eyebrow">Plans</p>
-          <h2>15 / 30 / 90 days in East Caribbean dollars</h2>
-          <p className="muted lead">Starter packages. Ask in chat if you need a mix of days or an extension.</p>
+          <h2>{planHeadline}</h2>
+          <p className="muted lead">
+            Same packages as the owner Plans desk — live from GlobalNetwork. Ask in chat for a day extension.
+          </p>
         </header>
         <div className="plan-grid">
-          <article className="glass-card plan-card" data-reveal>
-            <p className="eyebrow">Starter</p>
-            <h3>15 days</h3>
-            <p className="plan-price">EC$2,200</p>
-            <p className="muted">Short cycle when you want a smaller outlay.</p>
-          </article>
-          <article className="glass-card plan-card plan-featured" data-reveal>
-            <p className="eyebrow">Most used</p>
-            <h3>30 days</h3>
-            <p className="plan-price">EC$4,000</p>
-            <p className="muted">A full month on the line, billed in XCD.</p>
-            <a className="btn btn-primary" href={WEB_APP}>
-              Manage my service
-            </a>
-          </article>
-          <article className="glass-card plan-card" data-reveal>
-            <p className="eyebrow">Best value</p>
-            <h3>90 days</h3>
-            <p className="plan-price">EC$10,800</p>
-            <p className="muted">Three months prepaid — fewer renewals to remember.</p>
-          </article>
+          {plansLoading && (
+            <article className="glass-card plan-card" data-reveal>
+              <p className="muted">Loading current plans…</p>
+            </article>
+          )}
+          {!plansLoading && plansError && (
+            <article className="glass-card plan-card" data-reveal>
+              <p className="muted">Plans could not load right now. Open Manage my service or ask the desk.</p>
+              <a className="btn btn-primary" href={WEB_APP}>
+                Manage my service
+              </a>
+            </article>
+          )}
+          {!plansLoading && !plansError && plans.length === 0 && (
+            <article className="glass-card plan-card" data-reveal>
+              <p className="muted">No public packages yet. Ask GlobalNetwork in chat for current pricing.</p>
+              <a className="btn btn-primary" href={WEB_APP}>
+                Manage my service
+              </a>
+            </article>
+          )}
+          {plans.map((plan, i) => {
+            const featured = plan.id === featuredPlanId
+            return (
+              <article
+                key={plan.id}
+                className={`glass-card plan-card${featured ? ' plan-featured' : ''}`}
+                data-reveal
+                style={{ transitionDelay: `${i * 70}ms` }}
+              >
+                <p className="eyebrow">{featured ? 'Most used' : plan.days >= 90 ? 'Best value' : 'Package'}</p>
+                <h3>{plan.name || `${plan.days} days`}</h3>
+                <p className="plan-price">{formatEc(plan.feeAmount)}</p>
+                <p className="muted">
+                  {plan.days} day{plan.days === 1 ? '' : 's'} on the line · billed in {plan.currency || 'XCD'}.
+                </p>
+                {featured && (
+                  <a className="btn btn-primary" href={WEB_APP}>
+                    Manage my service
+                  </a>
+                )}
+              </article>
+            )
+          })}
         </div>
       </section>
 

@@ -65,7 +65,8 @@ service cloud.firestore {
     }
 
     match /plans/{planId} {
-      allow read: if signedIn();
+      // Public catalog for the marketing site; only owners edit in the Plans desk.
+      allow read: if true;
       allow write: if isOwner();
     }
 
