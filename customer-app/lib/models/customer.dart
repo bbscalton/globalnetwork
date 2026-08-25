@@ -97,7 +97,9 @@ class CustomerAccount {
   String get validUntilLabel {
     final until = paidUntilMs;
     if (until == null || until <= 0) return 'No service date yet';
-    final d = DateTime.fromMillisecondsSinceEpoch(until);
+    // Antigua AST (UTC−4) — same calendar day the owner desk shows.
+    const offsetMs = -4 * 60 * 60 * 1000;
+    final d = DateTime.fromMillisecondsSinceEpoch(until + offsetMs, isUtc: true);
     const months = [
       'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',

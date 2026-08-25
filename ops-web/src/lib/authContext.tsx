@@ -7,15 +7,14 @@ import {
   type ReactNode,
 } from 'react'
 import {
-  GoogleAuthProvider,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  signInWithPopup,
   signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth'
 import { auth, FIREBASE_CONFIGURED } from './firebase'
 import { isProjectAdmin, ORG_ID } from './admin'
+import { signInWithGoogle as googleSignIn } from './googleAuth'
 import { linkDeskAccount, observeDeskMember, registerOwnerDevice } from './repo'
 import type { DeskMember, DeskRole } from './types'
 
@@ -127,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       signInWithGoogle: async () => {
         if (!auth) throw new Error('Firebase is not configured for this build.')
-        await signInWithPopup(auth, new GoogleAuthProvider())
+        await googleSignIn(auth)
       },
       signOut: async () => {
         if (auth) await firebaseSignOut(auth)

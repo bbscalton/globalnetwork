@@ -336,12 +336,13 @@ export const adjustSubscription = onCall(CALLABLE, async (request) => {
     }
 
     const left = remainingDays(paidUntilMs, now);
+    const stillPaid = !!paidUntilMs && paidUntilMs > now;
     let status = currentStatus;
     if (statusOverrideRaw) {
       status = statusOverrideRaw;
     } else if (currentStatus === "suspended") {
       status = "suspended";
-    } else if (left <= 0) {
+    } else if (!stillPaid) {
       status = "expired";
     } else if (currentStatus === "grace") {
       status = "grace";
@@ -351,7 +352,7 @@ export const adjustSubscription = onCall(CALLABLE, async (request) => {
 
     let graceUntilMs: number | null = Number(snap.get("graceUntilMs") ?? 0) || null;
     if (status === "grace" && paidUntilMs) graceUntilMs = paidUntilMs;
-    else if (status === "active" || status === "expired" || left <= 0) graceUntilMs = null;
+    else if (status === "active" || status === "expired" || !stillPaid) graceUntilMs = null;
     const daysGranted = hasAddDays ? Math.floor(Number(request.data.addDays)) : left;
 
     tx.update(ref, {

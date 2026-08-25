@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { ChatMessage, Customer, IssueTicket, Payment, Plan } from './lib/types'
 import * as repo from './lib/repo'
 import { ChatBubbleBody } from './ChatMedia'
-import { cyclePct, fmtDate, fmtWhen, initials, statusTone } from './lib/desk'
+import { cyclePct, fmtDate, fmtWhen, initials, remainingLabel, statusTone } from './lib/desk'
 import { useAuth } from './lib/authContext'
 import { AuthImage } from './lib/AuthImage'
 import { customerPin, displayAddress, looksLikeCoordinates } from './lib/geo'
@@ -93,7 +93,6 @@ export function CustomerPage({
   }
   if (!customer) return <p className="muted">Loading record…</p>
 
-  const left = repo.daysLeft(customer.paidUntilMs, now)
   const pct = cyclePct(customer, now)
   const needsPackage =
     !String(customer.planId || '').trim() ||
@@ -241,8 +240,8 @@ export function CustomerPage({
         </div>
         <div className="record-status">
           <span className={`pill ${statusTone(customer.status)}`}>{customer.status}</span>
-          <p className="days-left">{left > 0 ? `${left} days left` : 'Off network'}</p>
-          <p className="muted tiny">Paid until {fmtDate(customer.paidUntilMs)}</p>
+          <p className="days-left">{remainingLabel(customer.paidUntilMs, now)}</p>
+          <p className="muted tiny">Paid until {fmtDate(customer.paidUntilMs)} (Antigua)</p>
         </div>
       </header>
 

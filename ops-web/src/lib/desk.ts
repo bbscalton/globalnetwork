@@ -1,14 +1,45 @@
 import type { Customer, CustomerStatus, IssueTicket } from './types'
 import { daysLeft } from './repo'
 
+/** Antigua / AST (UTC−4, no DST) — keep desk + customer app dates aligned. */
+const ANTIGUA_TZ = 'America/Antigua'
+
 export function fmtDate(ms: number | null | undefined): string {
   if (!ms) return '—'
-  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(ms).toLocaleDateString('en-GB', {
+    timeZone: ANTIGUA_TZ,
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 
 export function fmtWhen(ms: number | null | undefined): string {
   if (!ms) return '—'
-  return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return new Date(ms).toLocaleString('en-GB', {
+    timeZone: ANTIGUA_TZ,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+/** Desk label for remaining service — matches customer app (last paid day is not "off"). */
+export function remainingLabel(paidUntilMs: number | null | undefined, now: number): string {
+  const until = paidUntilMs ?? 0
+  if (!until || until <= now) return 'Off network'
+  const left = daysLeft(paidUntilMs ?? null, now)
+  if (left <= 0) return 'Ends today'
+  return left === 1 ? '1 day left' : `${left} days left`
+}
+
+export function remainingShort(paidUntilMs: number | null | undefined, now: number): string {
+  const until = paidUntilMs ?? 0
+  if (!until || until <= now) return 'Off network'
+  const left = daysLeft(paidUntilMs ?? null, now)
+  if (left <= 0) return 'Ends today'
+  return `${left}d left`
 }
 
 export function initials(name: string): string {

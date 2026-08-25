@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Customer, CustomerStatus, IssueTicket, Plan } from './lib/types'
 import * as repo from './lib/repo'
-import { cyclePct, deskPulse, fmtDate, initials, statusTone } from './lib/desk'
+import { cyclePct, deskPulse, fmtDate, initials, remainingShort, statusTone } from './lib/desk'
 import { ONLINE_AFTER_MS } from './lib/firebase'
 
 type Filter = 'all' | CustomerStatus | 'due' | 'owed' | 'pending'
@@ -223,7 +223,6 @@ export function Board({
           </thead>
           <tbody>
             {rows.map((c) => {
-              const left = repo.daysLeft(c.paidUntilMs, now)
               return (
                 <tr key={c.id} className="roster-row" onClick={() => navigate(`/c/${c.id}`)}>
                   <td className="roster-check" onClick={(e) => e.stopPropagation()}>
@@ -256,7 +255,7 @@ export function Board({
                         <span style={{ width: `${cyclePct(c, now)}%` }} />
                       </div>
                       <span className="muted tiny">
-                        {left > 0 ? `${left}d left` : 'Off network'} · {fmtDate(c.paidUntilMs)}
+                        {remainingShort(c.paidUntilMs, now)} · {fmtDate(c.paidUntilMs)}
                       </span>
                     </div>
                   </td>

@@ -3,7 +3,7 @@ import { useAuth } from '@desk/lib/authContext'
 import { consumeGoogleAuthError, googleAuthErrorMessage } from '@desk/lib/googleAuth'
 import * as repo from '@desk/lib/repo'
 import { daysLeft, formatEc } from '@desk/lib/repo'
-import { fmtDate } from '@desk/lib/desk'
+import { fmtDate, remainingLabel } from '@desk/lib/desk'
 import type { Customer, PosOutlet } from '@desk/lib/types'
 import { DAY_EXTENSION_RATE_XCD } from '@desk/lib/types'
 
@@ -476,9 +476,9 @@ function PosShell({
                 {live.phone || live.email || 'No contact'}
                 {live.planName ? ` · ${live.planName}` : ''}
               </p>
-              <div className={`pulse ${left <= 0 ? 'off' : left <= 3 ? 'warn' : ''}`}>
+              <div className={`pulse ${left <= 0 && (live.paidUntilMs ?? 0) <= now ? 'off' : left <= 3 ? 'warn' : ''}`}>
                 <b>{left}</b>
-                <span>days left</span>
+                <span>{remainingLabel(live.paidUntilMs, now)}</span>
               </div>
               <ul className="facts">
                 <li>
