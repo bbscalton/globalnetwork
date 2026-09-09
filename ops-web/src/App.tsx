@@ -125,7 +125,7 @@ function Login({
   signIn: (e: string, p: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
 }) {
-  const [email, setEmail] = useState('neuereatec@gmail.com')
+  const [email, setEmail] = useState('gbnglobenetwork@gmail.com')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(() => consumeGoogleAuthError())
   const [busy, setBusy] = useState(false)
@@ -168,7 +168,7 @@ function Login({
         <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void onGoogle()}>
           {busy ? 'Opening Google…' : 'Continue with Google'}
         </button>
-        <p className="muted tiny">Founding owner: neuereatec@gmail.com · Other Google accounts wait for approval.</p>
+        <p className="muted tiny">Founding owner: gbnglobenetwork@gmail.com · Other Google accounts wait for approval.</p>
       </form>
     </div>
   )

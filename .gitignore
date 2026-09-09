@@ -1,7 +1,6 @@
 node_modules/
 dist/
 .firebase/
-.firebaserc
 .env
 .env.local
 *.log

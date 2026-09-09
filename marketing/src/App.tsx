@@ -304,7 +304,7 @@ export default function App() {
               <h3>Not the staff app</h3>
               <p className="muted">
                 Customers use the web app or the customer Android APK. The owner desk is a separate tool
-                for neuereatec staff — linked quietly in the footer.
+                for GlobalNetwork staff — linked quietly in the footer.
               </p>
             </article>
           </div>
@@ -344,7 +344,7 @@ export default function App() {
           </article>
         </div>
         <p className="support-meta" data-reveal>
-          Area: Antigua · Desk timezone: America/Antigua · Owner: neuereatec@gmail.com
+          Area: Antigua · Desk timezone: America/Antigua · Owner: gbnglobenetwork@gmail.com
         </p>
       </section>
 
@@ -396,7 +396,7 @@ export default function App() {
             <a href={OPS}>Open owner desk</a>
             <a href={POS}>Field POS</a>
             <a href={DESK_APK}>Download owner desk Android</a>
-            <p className="muted small">For neuereatec / approved desk owners only. Not a customer download.</p>
+            <p className="muted small">For GlobalNetwork / approved desk owners only. Not a customer download.</p>
           </div>
         </div>
       </footer>

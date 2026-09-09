@@ -114,7 +114,7 @@ function Login({
   signIn: (e: string, p: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
 }) {
-  const [email, setEmail] = useState('neuereatec@gmail.com')
+  const [email, setEmail] = useState('gbnglobenetwork@gmail.com')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(() => consumeGoogleAuthError())
   const [busy, setBusy] = useState(false)

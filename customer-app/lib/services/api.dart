@@ -22,7 +22,7 @@ class GnApi {
   GoogleSignIn get _googleClient {
     return _google ??= GoogleSignIn(
       scopes: const ['email', 'profile'],
-      serverClientId: '367351875740-matj6sj8li188ool3fi0lra6h58ne2ht.apps.googleusercontent.com',
+      serverClientId: '694576693138-dc0dk5iag8dva2u2t9hg87umo971oc2a.apps.googleusercontent.com',
     );
   }
 

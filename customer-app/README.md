@@ -13,9 +13,9 @@ Web: https://bbscalton.github.io/globalnetwork/app/
 3. The owner must create your customer record **with the same Gmail** before you can see remaining days.
 4. Tap **Continue with Google**, or register with email and password.
 
-Google sign-in on **web** uses Firebase Auth `signInWithPopup` (same project `globalnetwork-isp`). Add **`bbscalton.github.io`** in Firebase Console → Authentication → Settings → Authorized domains if Google login fails with unauthorized-domain.
+Google sign-in on **web** uses Firebase Auth `signInWithPopup` (project `globalnetwork-d544c`). Authorized domain **`bbscalton.github.io`** is required in Firebase Console → Authentication → Settings → Authorized domains.
 
-Google sign-in on Android uses the Firebase Android app `gn.globalnetwork.globalnetwork_customer` and the OAuth **Web** client as `serverClientId`. The website APK is signed with this machine’s Android debug keystore (already registered):
+Google sign-in on Android uses the Firebase Android app `gn.globalnetwork.globalnetwork_customer` and the OAuth **Web** client as `serverClientId`. The website APK is signed with this machine’s Android debug keystore. Note: the debug SHA-1 is still registered on the old `globalnetwork-isp` project; remove it there (or use a new keystore) before Android Google Sign-In works on `globalnetwork-d544c`.
 
 - SHA-1: `D1:47:8C:54:D2:CC:D3:2C:2E:EC:DF:DD:09:7B:FE:BB:F4:95:82:D0`
 - SHA-256: `18:F3:9F:96:9E:F8:1A:06:95:95:13:F1:37:0B:FC:F7:FE:8B:B7:DA:02:07:44:6B:DF:0E:5E:0E:DA:51:F2:DC`

@@ -3,7 +3,7 @@ import { FirebaseError } from 'firebase/app'
 
 const ERROR_KEY = 'gn.googleAuthError'
 const FIREBASE_GOOGLE_PROVIDER_URL =
-  'https://console.firebase.google.com/project/globalnetwork-isp/authentication/providers'
+  'https://console.firebase.google.com/project/globalnetwork-d544c/authentication/providers'
 
 export function googleProvider(): GoogleAuthProvider {
   const provider = new GoogleAuthProvider()

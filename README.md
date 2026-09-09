@@ -2,7 +2,7 @@
 
 Internet service in **Antigua**, billed in **East Caribbean dollars (EC$ / XCD)**.
 
-Two identities only: the **owner** (`neuereatec@gmail.com`) on the web desk, and **customers** on web, iOS, and Android.
+Two identities only: the **owner** (`gbnglobenetwork@gmail.com`) on the web desk, and **customers** on web, iOS, and Android.
 
 - Marketing: https://bbscalton.github.io/globalnetwork/
 - Customer web app: https://bbscalton.github.io/globalnetwork/app/
@@ -25,7 +25,7 @@ cd pos-web && npm install && npm run dev
 cd functions && npm install && npm run build
 ```
 
-Copy Firebase `VITE_FIREBASE_*` keys into `marketing/.env` and `ops-web/.env`.
+Copy Firebase `VITE_FIREBASE_*` keys into `marketing/.env`, `ops-web/.env`, and `pos-web/.env` (project ID `globalnetwork-d544c`). Cloud Functions require the Firebase **Blaze** (pay-as-you-go) plan — Spark alone cannot deploy Gen2 Functions.
 
 `extendSubscription({ customerId, days, amountPaid, note })` grants extra days. If they pay less than the plan fee, status becomes `grace`.
 
