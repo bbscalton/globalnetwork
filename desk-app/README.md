@@ -2,14 +2,14 @@
 
 WebView shell around the live owner desk:
 
-https://bbscalton.github.io/globalnetwork/ops/
+https://gbnglobenetwork-sketch.github.io/globalnetwork/ops/
 
 Package id is `gn.globalnetwork.desk` so it can sit next to the customer app
 (`gn.globalnetwork.globalnetwork_customer`). Google sign-in opens in Chrome
 Custom Tabs (not trapped inside the system WebView).
 
 > Note: A Trusted Web Activity needs Digital Asset Links at
-> `https://bbscalton.github.io/.well-known/assetlinks.json`. GitHub **Project**
+> `https://gbnglobenetwork-sketch.github.io/.well-known/assetlinks.json`. GitHub **Project**
 > Pages only publish under `/globalnetwork/`, so TWA verification fails and the
 > old launcher exited immediately. This app uses a WebView shell instead.
 
@@ -22,7 +22,8 @@ $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 ```
 
 The release APK is `app/build/outputs/apk/release/app-release.apk`
-(arm64-v8a + x86_64 for phones and emulators).
+(armeabi-v7a + arm64-v8a + x86_64 for phones and emulators). Version 1.0.3 keeps
+Google / Firebase OAuth inside an in-app WebView popup so sign-in can finish.
 Without `key.properties` it is signed with this machine's Android debug keystore.
 
 ## Publish

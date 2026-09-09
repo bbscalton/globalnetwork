@@ -4,7 +4,7 @@ Flutter app for subscribers on **web**, Android, and iOS. The owner manages acco
 
 Bundle IDs: Android `gn.globalnetwork.globalnetwork_customer`, iOS `gn.globalnetwork.globalnetworkCustomer`.
 
-Web: https://bbscalton.github.io/globalnetwork/app/
+Web: https://gbnglobenetwork-sketch.github.io/globalnetwork/app/
 
 ## Setup
 
@@ -13,7 +13,7 @@ Web: https://bbscalton.github.io/globalnetwork/app/
 3. The owner must create your customer record **with the same Gmail** before you can see remaining days.
 4. Tap **Continue with Google**, or register with email and password.
 
-Google sign-in on **web** uses Firebase Auth `signInWithPopup` (project `globalnetwork-d544c`). Authorized domain **`bbscalton.github.io`** is required in Firebase Console → Authentication → Settings → Authorized domains.
+Google sign-in on **web** uses Firebase Auth `signInWithPopup` (project `globalnetwork-d544c`). Authorized domain **`gbnglobenetwork-sketch.github.io`** is required in Firebase Console → Authentication → Settings → Authorized domains.
 
 Google sign-in on Android uses the Firebase Android app `gn.globalnetwork.globalnetwork_customer` and the OAuth **Web** client as `serverClientId`. The website APK is signed with this machine’s Android debug keystore. Note: the debug SHA-1 is still registered on the old `globalnetwork-isp` project; remove it there (or use a new keystore) before Android Google Sign-In works on `globalnetwork-d544c`.
 
@@ -24,7 +24,7 @@ If you switch to a Play App Signing or a new upload key, add that SHA-1 (and SHA
 
 ## Install
 
-- **Web:** https://bbscalton.github.io/globalnetwork/app/
+- **Web:** https://gbnglobenetwork-sketch.github.io/globalnetwork/app/
 - **Android:** download the APK from the marketing site and install (allow unknown sources if asked).
 - **iPhone:** Apple will not install a raw IPA from a website on a stock iPhone. Use TestFlight (or the App Store) for a normal install. CI publishes an **unsigned** IPA on GitHub Releases for Xcode / archival only.
 

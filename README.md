@@ -4,17 +4,17 @@ Internet service in **Antigua**, billed in **East Caribbean dollars (EC$ / XCD)*
 
 Two identities only: the **owner** (`gbnglobenetwork@gmail.com`) on the web desk, and **customers** on web, iOS, and Android.
 
-- Marketing: https://bbscalton.github.io/globalnetwork/
-- Customer web app: https://bbscalton.github.io/globalnetwork/app/
-- Owner desk: https://bbscalton.github.io/globalnetwork/ops/
-- Field POS: https://bbscalton.github.io/globalnetwork/pos/
+- Marketing: https://gbnglobenetwork-sketch.github.io/globalnetwork/
+- Customer web app: https://gbnglobenetwork-sketch.github.io/globalnetwork/app/
+- Owner desk: https://gbnglobenetwork-sketch.github.io/globalnetwork/ops/
+- Field POS: https://gbnglobenetwork-sketch.github.io/globalnetwork/pos/
 - Customer Android APK: https://globalnetwork-media.neuereatec.workers.dev/app/android.apk
 - Owner desk Android APK: https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk
-- iOS IPA (unsigned CI build): https://github.com/bbscalton/globalnetwork/releases/latest/download/GlobalNetwork.ipa
+- iOS IPA (unsigned CI build): https://github.com/gbnglobenetwork-sketch/globalnetwork/releases/latest/download/GlobalNetwork.ipa
 
 Customers can use the browser app, or install the **customer** Android APK from the site. The **owner desk** APK is a separate app (`gn.globalnetwork.desk`) that wraps the live `/ops/` desk in a Chrome Trusted Web Activity — it does not replace the customer APK. A stock iPhone will **not** install a website IPA; use TestFlight or the App Store for a normal install. The IPA is an unsigned archive for Xcode / a later signed upload.
 
-Google sign-in on the customer web app needs `bbscalton.github.io` in Firebase Console → Authentication → Settings → Authorized domains (same as the owner desk).
+Google sign-in on the customer web app needs `gbnglobenetwork-sketch.github.io` in Firebase Console → Authentication → Settings → Authorized domains (same as the owner desk).
 
 ## Local run
 
@@ -37,4 +37,4 @@ GitHub Actions builds the Android APK (Ubuntu) and an unsigned iOS IPA (`macos-1
 
 ## Owner desk Android
 
-`desk-app/` is a Chrome **Trusted Web Activity** around https://bbscalton.github.io/globalnetwork/ops/. Package id `gn.globalnetwork.desk` is separate from the customer app. Download: https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk
+`desk-app/` is a Chrome **Trusted Web Activity** around https://gbnglobenetwork-sketch.github.io/globalnetwork/ops/. Package id `gn.globalnetwork.desk` is separate from the customer app. Download: https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk

@@ -15,22 +15,24 @@
 
     <application
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Desk.Splash"
+        android:theme="@style/Theme.Desk"
         android:usesCleartextTraffic="false">
 
         <!--
           Primary launcher is a WebView shell. Trusted Web Activity needs Digital Asset Links
-          at https://bbscalton.github.io/.well-known/assetlinks.json, which GitHub Project Pages
+          at https://gbnglobenetwork-sketch.github.io/.well-known/assetlinks.json, which GitHub Project Pages
           cannot host (only /globalnetwork/…). Without that, the old TWA launcher exited immediately.
         -->
         <activity
             android:name=".DeskWebActivity"
             android:alwaysRetainTaskState="true"
             android:exported="true"
+            android:hardwareAccelerated="true"
             android:label="@string/app_name"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Desk.Splash"
@@ -46,7 +48,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:host="bbscalton.github.io"
+                    android:host="gbnglobenetwork-sketch.github.io"
                     android:pathPrefix="/globalnetwork/ops"
                     android:scheme="https" />
             </intent-filter>

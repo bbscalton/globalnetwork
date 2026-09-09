@@ -45,11 +45,11 @@ jobs:
           VITE_R2_MEDIA_PROXY_BASE_URL: ${{ secrets.VITE_R2_MEDIA_PROXY_BASE_URL }}
           VITE_FUNCTIONS_HEALTH_URL: ${{ secrets.VITE_FUNCTIONS_HEALTH_URL }}
           VITE_PLATFORM_HEALTH_URL: ${{ secrets.VITE_PLATFORM_HEALTH_URL }}
-          VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
-          VITE_POS_WEB_URL: https://bbscalton.github.io/globalnetwork/pos/
-          VITE_CUSTOMER_WEB_URL: https://bbscalton.github.io/globalnetwork/app/
-          VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
-          VITE_GITHUB_REPO_URL: https://github.com/bbscalton/globalnetwork
+          VITE_OPS_WEB_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/ops/
+          VITE_POS_WEB_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/pos/
+          VITE_CUSTOMER_WEB_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/app/
+          VITE_MARKETING_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/
+          VITE_GITHUB_REPO_URL: https://github.com/gbnglobenetwork-sketch/globalnetwork
           VITE_ANDROID_APK_URL: https://globalnetwork-media.neuereatec.workers.dev/app/android.apk
           VITE_DESK_APK_URL: https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk
         run: |
@@ -65,9 +65,9 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
-          VITE_POS_WEB_URL: https://bbscalton.github.io/globalnetwork/pos/
-          VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
+          VITE_OPS_WEB_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/ops/
+          VITE_POS_WEB_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/pos/
+          VITE_MARKETING_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/
         run: |
           npm ci
           npm run build
@@ -86,9 +86,9 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-          VITE_POS_WEB_URL: https://bbscalton.github.io/globalnetwork/pos/
-          VITE_OPS_WEB_URL: https://bbscalton.github.io/globalnetwork/ops/
-          VITE_MARKETING_URL: https://bbscalton.github.io/globalnetwork/
+          VITE_POS_WEB_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/pos/
+          VITE_OPS_WEB_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/ops/
+          VITE_MARKETING_URL: https://gbnglobenetwork-sketch.github.io/globalnetwork/
         run: |
           npm ci
           npm run build
