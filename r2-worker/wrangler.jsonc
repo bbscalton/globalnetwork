@@ -3,7 +3,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-15",
   "vars": {
-    "FIREBASE_PROJECT_ID": "globalnetwork-d544c"
+    "FIREBASE_PROJECT_ID": "globalnetwork-isp"
   },
   "r2_buckets": [
     {

@@ -1,6 +1,5 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 const kFirebaseOptionsReady = true;
 
@@ -19,33 +18,30 @@ class DefaultFirebaseOptions {
     }
   }
 
-  /// Firebase web app for project `globalnetwork-d544c`.
+  /// Same Firebase web app as iOS currently references (`globalnetwork-isp`).
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBYcQTdZ7Yre-CNoePe42jSdt7R4gjw6M0',
-    appId: '1:694576693138:web:2e8c2d5b53c76b4eff4b4b',
-    messagingSenderId: '694576693138',
-    projectId: 'globalnetwork-d544c',
-    authDomain: 'globalnetwork-d544c.firebaseapp.com',
-    storageBucket: 'globalnetwork-d544c.firebasestorage.app',
-    measurementId: 'G-H7TQG08Y2J',
+    apiKey: 'AIzaSyBkv6V-EDJZWHoRFyVDbl5dRVvwMwqlZTI',
+    appId: '1:367351875740:web:471e1f400fe8e805c64559',
+    messagingSenderId: '367351875740',
+    projectId: 'globalnetwork-isp',
+    authDomain: 'globalnetwork-isp.firebaseapp.com',
+    storageBucket: 'globalnetwork-isp.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBpMY4JIb9lh8tXMVINgVOb_QUjvjZnzrE',
-    appId: '1:694576693138:android:185818bc70879802ff4b4b',
-    messagingSenderId: '694576693138',
-    projectId: 'globalnetwork-d544c',
-    storageBucket: 'globalnetwork-d544c.firebasestorage.app',
+    apiKey: 'AIzaSyBg3K1ibbafKJhSGEELcEU-8TN0RXzWLYw',
+    appId: '1:367351875740:android:f966a7288e8a92d9c64559',
+    messagingSenderId: '367351875740',
+    projectId: 'globalnetwork-isp',
+    storageBucket: 'globalnetwork-isp.firebasestorage.app',
   );
 
-  /// iOS uses the web app config until a dedicated iOS app is registered.
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBYcQTdZ7Yre-CNoePe42jSdt7R4gjw6M0',
-    appId: '1:694576693138:web:2e8c2d5b53c76b4eff4b4b',
-    messagingSenderId: '694576693138',
-    projectId: 'globalnetwork-d544c',
-    authDomain: 'globalnetwork-d544c.firebaseapp.com',
-    storageBucket: 'globalnetwork-d544c.firebasestorage.app',
-    measurementId: 'G-H7TQG08Y2J',
+    apiKey: 'AIzaSyBkv6V-EDJZWHoRFyVDbl5dRVvwMwqlZTI',
+    appId: '1:367351875740:web:471e1f400fe8e805c64559',
+    messagingSenderId: '367351875740',
+    projectId: 'globalnetwork-isp',
+    authDomain: 'globalnetwork-isp.firebaseapp.com',
+    storageBucket: 'globalnetwork-isp.firebasestorage.app',
   );
 }

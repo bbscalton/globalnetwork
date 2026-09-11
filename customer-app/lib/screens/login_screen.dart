@@ -47,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
         case 'configuration-not-found':
           return 'Google sign-in is not enabled on this project yet.';
         case 'unauthorized-domain':
-          return 'Add gbnglobenetwork-sketch.github.io in Firebase Console → Authentication → Settings → Authorized domains, then try Google again.';
+          return 'Add bbscalton.github.io in Firebase Console → Authentication → Settings → Authorized domains, then try Google again.';
         case 'popup-blocked':
           return 'The Google sign-in popup was blocked. Allow popups for this site and try again.';
         case 'popup-closed-by-user':

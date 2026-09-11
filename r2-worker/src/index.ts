@@ -1,4 +1,4 @@
-const OWNER_EMAIL = "gbnglobenetwork@gmail.com";
+const OWNER_EMAIL = "neuereatec@gmail.com";
 
 type Env = {
   MEDIA_BUCKET: R2Bucket;
@@ -182,7 +182,7 @@ async function verifyFirebaseToken(request: Request, env: Env): Promise<{ uid: s
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) return null;
-  const projectId = env.FIREBASE_PROJECT_ID?.trim() || "globalnetwork-d544c";
+  const projectId = env.FIREBASE_PROJECT_ID?.trim() || "globalnetwork-isp";
   try {
     const jwtAuth = await verifyFirebaseJwt(token, projectId);
     if (jwtAuth) return jwtAuth;

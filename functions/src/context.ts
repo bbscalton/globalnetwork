@@ -13,7 +13,7 @@ export const CALLABLE = {
   invoker: "public" as const,
 };
 
-export const ADMIN_EMAIL = "gbnglobenetwork@gmail.com";
+export const ADMIN_EMAIL = "neuereatec@gmail.com";
 export const DEFAULT_ORG_ID = "globalnetwork";
 export const CURRENCY = "XCD";
 export const DAY_MS = 24 * 60 * 60 * 1000;

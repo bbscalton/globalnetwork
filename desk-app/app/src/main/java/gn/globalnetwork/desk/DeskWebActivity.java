@@ -26,7 +26,7 @@ import androidx.core.splashscreen.SplashScreen;
  * "Google sign-in was closed before it finished."
  */
 public class DeskWebActivity extends AppCompatActivity {
-    public static final String DESK_URL = "https://gbnglobenetwork-sketch.github.io/globalnetwork/ops/";
+    public static final String DESK_URL = "https://bbscalton.github.io/globalnetwork/ops/";
 
     private FrameLayout root;
     private WebView webView;
@@ -69,7 +69,7 @@ public class DeskWebActivity extends AppCompatActivity {
         String start = DESK_URL;
         if (data != null) {
             String candidate = data.toString();
-            if (candidate.startsWith("https://gbnglobenetwork-sketch.github.io/globalnetwork")) {
+            if (candidate.startsWith("https://bbscalton.github.io/globalnetwork")) {
                 start = candidate;
             }
         }
@@ -176,7 +176,7 @@ public class DeskWebActivity extends AppCompatActivity {
     private static boolean isDeskHost(Uri url) {
         String host = url.getHost() == null ? "" : url.getHost().toLowerCase();
         String path = url.getPath() == null ? "" : url.getPath();
-        return "gbnglobenetwork-sketch.github.io".equals(host) && path.startsWith("/globalnetwork");
+        return "bbscalton.github.io".equals(host) && path.startsWith("/globalnetwork");
     }
 
     private static boolean isAuthOrDeskHost(Uri url) {

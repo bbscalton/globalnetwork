@@ -25,7 +25,7 @@
 
         <!--
           Primary launcher is a WebView shell. Trusted Web Activity needs Digital Asset Links
-          at https://gbnglobenetwork-sketch.github.io/.well-known/assetlinks.json, which GitHub Project Pages
+          at https://bbscalton.github.io/.well-known/assetlinks.json, which GitHub Project Pages
           cannot host (only /globalnetwork/…). Without that, the old TWA launcher exited immediately.
         -->
         <activity
@@ -48,7 +48,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:host="gbnglobenetwork-sketch.github.io"
+                    android:host="bbscalton.github.io"
                     android:pathPrefix="/globalnetwork/ops"
                     android:scheme="https" />
             </intent-filter>

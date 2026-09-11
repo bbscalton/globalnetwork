@@ -3,7 +3,7 @@ import { FirebaseError } from 'firebase/app'
 
 const ERROR_KEY = 'gn.googleAuthError'
 const FIREBASE_GOOGLE_PROVIDER_URL =
-  'https://console.firebase.google.com/project/globalnetwork-d544c/authentication/providers'
+  'https://console.firebase.google.com/project/globalnetwork-isp/authentication/providers'
 
 export function googleProvider(): GoogleAuthProvider {
   const provider = new GoogleAuthProvider()
@@ -23,7 +23,7 @@ export function googleAuthErrorMessage(err: unknown): string {
     case 'auth/operation-not-allowed':
       return `Google sign-in is not enabled on this Firebase project yet. Enable the Google provider at ${FIREBASE_GOOGLE_PROVIDER_URL}`
     case 'auth/unauthorized-domain':
-      return 'This site is not an authorized domain. Add gbnglobenetwork-sketch.github.io in Authentication → Settings → Authorized domains.'
+      return 'This site is not an authorized domain. Add bbscalton.github.io in Authentication → Settings → Authorized domains.'
     case 'auth/popup-blocked':
       return 'The Google sign-in popup was blocked. Allow popups for this site and try again.'
     case 'auth/popup-closed-by-user':

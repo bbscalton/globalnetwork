@@ -344,7 +344,7 @@ export default function App() {
           </article>
         </div>
         <p className="support-meta" data-reveal>
-          Area: Antigua · Desk timezone: America/Antigua · Owner: gbnglobenetwork@gmail.com
+          Area: Antigua · Desk timezone: America/Antigua · Owner: neuereatec@gmail.com
         </p>
       </section>
 
