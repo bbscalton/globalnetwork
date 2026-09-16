@@ -11,3 +11,6 @@ key.properties
 *.keystore
 /captures/
 .cxx/
+
+.wrangler/
+

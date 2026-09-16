@@ -84,25 +84,25 @@ export const registerOwnerDevice = onCall(CALLABLE, async (request) => {
   const owner = await requireOwner(request);
   const token = String(request.data?.fcmToken ?? "").trim();
   const orgId = String(request.data?.orgId ?? DEFAULT_ORG_ID);
-  await db.collection("orgs").doc(orgId).set(
-    {
-      ownerEmail: owner.email,
-      ownerUid: owner.uid,
-      ownerFcmToken: token || null,
-      ownerLastSeenMs: Date.now(),
-    },
-    { merge: true },
-  );
-  await db.collection("deskMembers").doc(owner.uid).set(
-    {
-      uid: owner.uid,
-      email: owner.email,
-      fcmToken: token || null,
-      lastSeenMs: Date.now(),
-    },
-    { merge: true },
-  );
-  return { ok: true };
+  const orgUpdate: Record<string, unknown> = {
+    ownerEmail: owner.email,
+    ownerUid: owner.uid,
+    ownerLastSeenMs: Date.now(),
+  };
+  const memberUpdate: Record<string, unknown> = {
+    uid: owner.uid,
+    email: owner.email,
+    lastSeenMs: Date.now(),
+  };
+  // Only overwrite FCM when a real token is provided. Empty calls from browsers
+  // without web push must not wipe the desk APK token.
+  if (token) {
+    orgUpdate.ownerFcmToken = token;
+    memberUpdate.fcmToken = token;
+  }
+  await db.collection("orgs").doc(orgId).set(orgUpdate, { merge: true });
+  await db.collection("deskMembers").doc(owner.uid).set(memberUpdate, { merge: true });
+  return { ok: true, registered: Boolean(token) };
 });
 
 export const savePlan = onCall(CALLABLE, async (request) => {

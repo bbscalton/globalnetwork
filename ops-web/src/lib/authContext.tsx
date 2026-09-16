@@ -106,7 +106,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isOwner) return
-    void registerOwnerDevice().catch(() => undefined)
+
+    const readNativeDeskToken = (): string => {
+      const w = window as Window & {
+        GlobalNetworkDesk?: { getFcmToken?: () => string; isNativeDesk?: () => boolean }
+        __GN_DESK_FCM_TOKEN__?: string
+      }
+      try {
+        const fromBridge = w.GlobalNetworkDesk?.getFcmToken?.()
+        if (typeof fromBridge === 'string' && fromBridge.trim()) return fromBridge.trim()
+      } catch {
+        // JavascriptInterface may throw if the page is mid-navigation.
+      }
+      const injected = w.__GN_DESK_FCM_TOKEN__
+      return typeof injected === 'string' ? injected.trim() : ''
+    }
+
+    const register = () => {
+      const token = readNativeDeskToken()
+      if (!token) return
+      void registerOwnerDevice(token).catch(() => undefined)
+    }
+
+    register()
+    const onToken = () => register()
+    window.addEventListener('gn-desk-fcm', onToken)
+    // Token often arrives shortly after the page loads / permission prompt.
+    const timers = [1000, 3000, 8000].map((ms) => window.setTimeout(register, ms))
+    return () => {
+      window.removeEventListener('gn-desk-fcm', onToken)
+      for (const id of timers) window.clearTimeout(id)
+    }
   }, [isOwner, user?.uid])
 
   const value = useMemo<AuthContextValue>(

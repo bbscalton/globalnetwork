@@ -2,6 +2,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
 }
 
 val keystoreProperties = Properties()
@@ -18,11 +19,11 @@ android {
         applicationId = "gn.globalnetwork.desk"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 5
+        versionName = "1.0.4"
         ndk {
-            // Phones (arm64) + local Android emulators (x86_64).
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            // 32/64-bit phones plus x86_64 emulators.
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64")
         }
     }
 
@@ -35,7 +36,6 @@ android {
         jniLibs {
             excludes += listOf(
                 "lib/armeabi/**",
-                "lib/armeabi-v7a/**",
                 "lib/x86/**",
             )
         }
@@ -82,5 +82,9 @@ configurations.all {
 dependencies {
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.core:core:1.15.0")
     implementation("com.google.androidbrowserhelper:androidbrowserhelper:2.6.2")
+    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

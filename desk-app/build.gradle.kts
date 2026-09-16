@@ -1,3 +1,1 @@
-plugins {
-    id("com.android.application") version "8.11.1" apply false
-}
+// Root build file — plugin versions live in settings.gradle.kts

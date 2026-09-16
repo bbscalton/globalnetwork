@@ -5,8 +5,10 @@ WebView shell around the live owner desk:
 https://bbscalton.github.io/globalnetwork/ops/
 
 Package id is `gn.globalnetwork.desk` so it can sit next to the customer app
-(`gn.globalnetwork.globalnetwork_customer`). Google sign-in opens in Chrome
-Custom Tabs (not trapped inside the system WebView).
+(`gn.globalnetwork.globalnetwork_customer`). Google sign-in completes inside an
+in-app WebView popup. Push notifications use **native FCM** (Android WebView
+cannot receive web push); the FCM token is bridged into ops-web for
+`registerOwnerDevice`.
 
 > Note: A Trusted Web Activity needs Digital Asset Links at
 > `https://bbscalton.github.io/.well-known/assetlinks.json`. GitHub **Project**
@@ -22,9 +24,9 @@ $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 ```
 
 The release APK is `app/build/outputs/apk/release/app-release.apk`
-(armeabi-v7a + arm64-v8a + x86_64 for phones and emulators). Version 1.0.3 keeps
-Google / Firebase OAuth inside an in-app WebView popup so sign-in can finish.
-Without `key.properties` it is signed with this machine's Android debug keystore.
+(armeabi-v7a + arm64-v8a + x86_64 for phones and emulators). Version 1.0.4 adds
+native FCM push for owner alerts. Without `key.properties` it is signed with this
+machine's Android debug keystore.
 
 ## Publish
 

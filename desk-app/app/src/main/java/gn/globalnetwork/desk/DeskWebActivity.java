@@ -1,22 +1,32 @@
 package gn.globalnetwork.desk;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.browser.customtabs.CustomTabsIntent;
+import androidx.core.content.ContextCompat;
 import androidx.core.splashscreen.SplashScreen;
 
 /**
@@ -24,6 +34,9 @@ import androidx.core.splashscreen.SplashScreen;
  * {@code signInWithPopup}, which needs a real WebView popup window — ejecting
  * OAuth into Chrome Custom Tabs closes the popup early and shows
  * "Google sign-in was closed before it finished."
+ *
+ * <p>Push uses native FCM (WebView cannot receive web push). The token is exposed
+ * to ops-web via {@link DeskJsBridge} so {@code registerOwnerDevice} can store it.
  */
 public class DeskWebActivity extends AppCompatActivity {
     public static final String DESK_URL = "https://bbscalton.github.io/globalnetwork/ops/";
@@ -31,12 +44,28 @@ public class DeskWebActivity extends AppCompatActivity {
     private FrameLayout root;
     private WebView webView;
     private WebView popupView;
+    private final DeskJsBridge bridge = new DeskJsBridge();
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
+    private final BroadcastReceiver tokenReceiver =
+        new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent == null) return;
+                String token = intent.getStringExtra("token");
+                applyFcmToken(token);
+            }
+        };
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
+
+        notificationPermissionLauncher =
+            registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                granted -> DeskFcm.refreshAsync(this, this::applyFcmToken));
 
         root = new FrameLayout(this);
         root.setLayoutParams(
@@ -74,9 +103,68 @@ public class DeskWebActivity extends AppCompatActivity {
             }
         }
         webView.loadUrl(start);
+
+        applyFcmToken(DeskFcm.getCachedToken(this));
+        requestNotificationPermissionAndToken();
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @Override
+    protected void onStart() {
+        super.onStart();
+        IntentFilter filter = new IntentFilter(DeskFirebaseMessagingService.ACTION_TOKEN);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(tokenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(tokenReceiver, filter);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        try {
+            unregisterReceiver(tokenReceiver);
+        } catch (IllegalArgumentException ignored) {
+        }
+        super.onStop();
+    }
+
+    private void requestNotificationPermissionAndToken() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                return;
+            }
+        }
+        DeskFcm.refreshAsync(this, this::applyFcmToken);
+    }
+
+    private void applyFcmToken(String token) {
+        bridge.setFcmToken(token == null ? "" : token);
+        runOnUiThread(this::injectNativeDeskGlobals);
+    }
+
+    private void injectNativeDeskGlobals() {
+        if (webView == null) return;
+        String token = bridge.getFcmToken();
+        String escaped =
+            token
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+                .replace("\n", "")
+                .replace("\r", "");
+        String js =
+            "(function(){try{"
+                + "window.__GN_NATIVE_DESK__=true;"
+                + "window.__GN_DESK_FCM_TOKEN__='"
+                + escaped
+                + "';"
+                + "window.dispatchEvent(new CustomEvent('gn-desk-fcm',{detail:{token:window.__GN_DESK_FCM_TOKEN__}}));"
+                + "}catch(e){}})();";
+        webView.evaluateJavascript(js, (ValueCallback<String>) null);
+    }
+
+    @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     private void configureWebView(WebView view, boolean isPopup) {
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
@@ -93,11 +181,17 @@ public class DeskWebActivity extends AppCompatActivity {
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         if (!isPopup) {
-            settings.setUserAgentString(settings.getUserAgentString() + " GlobalNetworkDesk/1.0.3");
+            settings.setUserAgentString(settings.getUserAgentString() + " GlobalNetworkDesk/1.0.4");
+            view.addJavascriptInterface(bridge, "GlobalNetworkDesk");
         }
 
         view.setWebViewClient(
             new WebViewClient() {
+                @Override
+                public void onPageFinished(WebView v, String url) {
+                    if (!isPopup) injectNativeDeskGlobals();
+                }
+
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
                     return handleNavigation(v, request.getUrl(), isPopup);
