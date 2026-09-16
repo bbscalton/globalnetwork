@@ -80,10 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
       } catch (e) {
         if (gone) return
+        const msg = e instanceof Error ? e.message : 'Could not open desk access.'
+        // Founder can still open the desk via email fallback, but callables are broken
+        // (usually billing). Keep the error visible so "internal" isn't a mystery.
+        setLinkError(msg)
         if (isProjectAdmin(user)) {
           setDeskRole('owner')
         } else {
-          setLinkError(e instanceof Error ? e.message : 'Could not open desk access.')
           setDeskRole(null)
         }
       } finally {

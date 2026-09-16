@@ -40,10 +40,10 @@ export default function App() {
     return <div className="auth">Checking your desk role…</div>
   }
   if (canDesk) {
-    return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} />
+    return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} linkError={linkError} />
   }
   if (canOutlets) {
-    return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} mode="manager" />
+    return <Shell orgId={orgId} email={user.email || ''} signOut={signOut} mode="manager" linkError={linkError} />
   }
   if (canPos) {
     return (
@@ -179,11 +179,13 @@ function Shell({
   email,
   signOut,
   mode = 'owner',
+  linkError = null,
 }: {
   orgId: string
   email: string
   signOut: () => Promise<void>
   mode?: 'owner' | 'manager'
+  linkError?: string | null
 }) {
   const owner = mode === 'owner'
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -278,6 +280,7 @@ function Shell({
       </aside>
       <main className="main">
         <CallOverlay customers={customers} />
+        {linkError && <p className="fail">{linkError}</p>}
         {error && <p className="fail">{error}</p>}
         <Routes>
           <Route

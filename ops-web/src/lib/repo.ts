@@ -302,6 +302,19 @@ function callableMessage(err: unknown): string {
   if (code === 'functions/unimplemented' || message === 'UNIMPLEMENTED') {
     return `${message || 'UNIMPLEMENTED'} — deploy Cloud Functions before using this action.`
   }
+  // Billing disabled / cold gateway failures often surface as internal or unavailable.
+  if (
+    code === 'functions/internal'
+    || code === 'functions/unavailable'
+    || /^internal$/i.test(message)
+    || /503|500 Server Error|Server Error/i.test(message)
+  ) {
+    return (
+      'Cloud Functions are down (usually billing is disabled on Firebase project globalnetwork-isp). '
+      + 'Re-enable billing, then retry. '
+      + 'https://console.developers.google.com/billing/enable?project=globalnetwork-isp'
+    )
+  }
   if (message) return message
   if (code) return code
   return 'Request failed'
