@@ -41,7 +41,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${ANDROID_UPLOAD_KEYSTORE_BASE64:-}" ]; then
-            echo "No ANDROID_UPLOAD_KEYSTORE_BASE64 secret; Gradle will use this runner's debug keystore."
+            echo "::warning::No ANDROID_UPLOAD_KEYSTORE_BASE64 secret; Gradle will use this runner's debug keystore."
+            echo "That CI cert is NOT registered in Firebase. Do NOT upload this APK to R2/website — Google Sign-In will fail (ApiException 10)."
+            echo "Publish the website APK from the neuereatec machine that owns the registered debug SHA-1."
             exit 0
           fi
           echo "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 -d > android/upload-keystore.jks

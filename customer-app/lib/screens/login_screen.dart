@@ -57,7 +57,13 @@ class _LoginScreenState extends State<LoginScreen> {
           return e.message ?? e.code;
       }
     }
-    return e.toString().replaceFirst('Exception: ', '');
+    final raw = e.toString();
+    // Google Play services ApiException 10 = DEVELOPER_ERROR (SHA-1 / OAuth client mismatch).
+    if (RegExp(r'\b(10|DEVELOPER_ERROR)\b').hasMatch(raw) &&
+        raw.toLowerCase().contains('api')) {
+      return 'Google sign-in is misconfigured for this install. Update the app from the website, or sign in with email and password.';
+    }
+    return raw.replaceFirst('Exception: ', '');
   }
 
   Future<void> _run(Future<void> Function() work) async {
