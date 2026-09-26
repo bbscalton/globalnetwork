@@ -199,6 +199,40 @@ export type OmadaPublicConfig = {
 export const DEFAULT_OMADA_HW = '1.0'
 export const DEFAULT_OMADA_FW = '1.4.2'
 
+export type QboEnvironment = 'sandbox' | 'production'
+
+export type QboPublicStatus = {
+  clientId: string
+  clientSecretSaved: boolean
+  clientSecretLast4: string
+  environment: QboEnvironment
+  redirectUri: string
+  scope: string
+  connected: boolean
+  realmId: string
+  companyName: string
+  connectedAtMs: number
+  tokenExpiresAtMs: number
+  exportReady: boolean
+}
+
+export const DEFAULT_QBO_STATUS: QboPublicStatus = {
+  clientId: '',
+  clientSecretSaved: false,
+  clientSecretLast4: '',
+  environment: 'sandbox',
+  redirectUri: 'https://bbscalton.github.io/globalnetwork/ops/',
+  scope: 'com.intuit.quickbooks.accounting',
+  connected: false,
+  realmId: '',
+  companyName: '',
+  connectedAtMs: 0,
+  tokenExpiresAtMs: 0,
+  exportReady: false,
+}
+
+export const QBO_REDIRECT_URI = 'https://bbscalton.github.io/globalnetwork/ops/'
+
 export type OmadaStatus = {
   ok: boolean
   connected: boolean

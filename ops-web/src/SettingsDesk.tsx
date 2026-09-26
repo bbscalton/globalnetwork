@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { DEFAULT_ORG_SETTINGS, type Customer, type OrgSettings } from './lib/types'
+import { DEFAULT_ORG_SETTINGS, DEFAULT_QBO_STATUS, QBO_REDIRECT_URI, type Customer, type OrgSettings, type QboEnvironment, type QboPublicStatus } from './lib/types'
 import * as repo from './lib/repo'
 import { AccountsDesk } from './AccountsDesk'
 
@@ -33,6 +33,11 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
   const [err, setErr] = useState<string | null>(null)
   const [resetCounts, setResetCounts] = useState<repo.FactoryResetResult | null>(null)
   const [tidyResult, setTidyResult] = useState<repo.TidyResult | null>(null)
+  const [qbo, setQbo] = useState<QboPublicStatus>(DEFAULT_QBO_STATUS)
+  const [qboClientId, setQboClientId] = useState('')
+  const [qboClientSecret, setQboClientSecret] = useState('')
+  const [qboEnvironment, setQboEnvironment] = useState<QboEnvironment>('sandbox')
+  const [qboLoading, setQboLoading] = useState(true)
 
   useEffect(() => {
     const next = org ?? DEFAULT_ORG_SETTINGS
@@ -44,6 +49,28 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
     setRenewalWarnDays(String(next.renewalWarnDays))
     setTimezone(next.timezone)
   }, [org])
+
+  useEffect(() => {
+    let cancelled = false
+    setQboLoading(true)
+    void repo
+      .qboStatus()
+      .then((res) => {
+        if (cancelled) return
+        setQbo(res.status)
+        setQboClientId(res.status.clientId)
+        setQboEnvironment(res.status.environment)
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load QuickBooks status')
+      })
+      .finally(() => {
+        if (!cancelled) setQboLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const stale = useMemo(
     () => customers.filter((c) => repo.isStaleCustomer(c, Date.now(), Number(staleDays) || 30)),
@@ -91,6 +118,39 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
     })
   }
 
+  const saveQbo = (e: FormEvent) => {
+    e.preventDefault()
+    void run(async () => {
+      const saved = await repo.saveQboConfig({
+        clientId: qboClientId.trim(),
+        clientSecret: qboClientSecret.trim() || undefined,
+        environment: qboEnvironment,
+        redirectUri: QBO_REDIRECT_URI,
+      })
+      setQbo(saved.status)
+      setQboClientId(saved.status.clientId)
+      setQboClientSecret('')
+      setQboEnvironment(saved.status.environment)
+      return 'QuickBooks app credentials saved. Click Connect QuickBooks to authorize the company file.'
+    })
+  }
+
+  const connectQbo = () =>
+    void run(async () => {
+      const started = await repo.qboStartConnect()
+      window.location.assign(started.authorizeUrl)
+      return 'Opening Intuit…'
+    })
+
+  const disconnectQbo = () => {
+    if (!window.confirm('Disconnect QuickBooks Online from this desk? Tokens will be revoked.')) return
+    void run(async () => {
+      const res = await repo.qboDisconnect()
+      setQbo(res.status)
+      return 'QuickBooks disconnected.'
+    })
+  }
+
   const tidy = (action: repo.TidyAction, confirm?: string, extra?: { olderThanDays?: number }) =>
     run(async () => {
       const result = await repo.tidyDesk({
@@ -105,6 +165,7 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
 
   const phraseOk = resetPhrase.trim().toUpperCase() === RESET_PHRASE
   const phrase = (key: string) => (phrases[key] ?? '').trim().toUpperCase()
+  const canConnect = Boolean(qbo.clientId && qbo.clientSecretSaved)
 
   return (
     <div className="desk">
@@ -135,6 +196,7 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
       {tab === 'roles' && <AccountsDesk embedded />}
 
       {tab === 'desk' && (
+      <>
       <form className="card" onSubmit={save}>
         <div className="card-head">
           <h2>Desk</h2>
@@ -181,6 +243,89 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
           Save settings
         </button>
       </form>
+
+      <section className="card">
+        <div className="card-head">
+          <h2>QuickBooks Online</h2>
+          <span className={`pill ${qbo.connected ? 'ok' : canConnect ? 'warn' : ''}`}>
+            {qboLoading ? '…' : qbo.connected ? 'Connected' : canConnect ? 'Ready to connect' : 'Not configured'}
+          </span>
+        </div>
+        <p className="muted">
+          Live OAuth connects this desk to your QuickBooks company file. Invoice/payment export can follow once the
+          company is linked. Keys stay in Firestore <code>adminConfig/quickbooksOnline</code> (Functions only — never
+          client-readable).
+        </p>
+        {qbo.connected && (
+          <ul className="ledger" style={{ marginBottom: '1rem' }}>
+            <li>
+              <span>Company</span>
+              <strong>{qbo.companyName || 'QuickBooks company'}</strong>
+            </li>
+            <li>
+              <span>Realm ID</span>
+              <strong>{qbo.realmId}</strong>
+            </li>
+            <li>
+              <span>Environment</span>
+              <strong>{qbo.environment}</strong>
+            </li>
+          </ul>
+        )}
+        <form onSubmit={saveQbo}>
+          <div className="form-row">
+            <label>
+              QBO Client ID
+              <input
+                value={qboClientId}
+                onChange={(e) => setQboClientId(e.target.value)}
+                placeholder="From Intuit Developer → Keys & OAuth"
+                autoComplete="off"
+              />
+            </label>
+            <label>
+              QBO Client Secret
+              <input
+                type="password"
+                value={qboClientSecret}
+                onChange={(e) => setQboClientSecret(e.target.value)}
+                placeholder={qbo.clientSecretSaved ? `Saved ·····${qbo.clientSecretLast4} — leave blank to keep` : 'Paste once, then Save'}
+                autoComplete="new-password"
+              />
+            </label>
+            <label>
+              Environment
+              <select value={qboEnvironment} onChange={(e) => setQboEnvironment(e.target.value as QboEnvironment)}>
+                <option value="sandbox">Sandbox</option>
+                <option value="production">Production</option>
+              </select>
+            </label>
+          </div>
+          <p className="muted tiny" style={{ marginTop: '0.5rem' }}>
+            Redirect URI to register in the Intuit app:{' '}
+            <code>{qbo.redirectUri || QBO_REDIRECT_URI}</code>
+          </p>
+          <div className="quick-renew" style={{ marginTop: '0.85rem' }}>
+            <button className="btn btn-ghost" type="submit" disabled={busy || !qboClientId.trim()}>
+              Save QBO credentials
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={busy || qboLoading || !canConnect || qbo.connected}
+              onClick={connectQbo}
+            >
+              Connect QuickBooks
+            </button>
+            {qbo.connected && (
+              <button className="btn btn-ghost danger" type="button" disabled={busy} onClick={disconnectQbo}>
+                Disconnect
+              </button>
+            )}
+          </div>
+        </form>
+      </section>
+      </>
       )}
 
       {tab === 'tidy' && (

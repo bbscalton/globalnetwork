@@ -71,8 +71,8 @@ service cloud.firestore {
     }
 
     match /adminConfig/{doc} {
-      // Omada passwords/secrets are Admin SDK only (saveOmadaConfig). Never client getDoc.
-      allow read, write: if isOwner() && doc != 'omadaEr7206';
+      // Omada / QuickBooks secrets are Admin SDK only (saveOmadaConfig / saveQboConfig). Never client getDoc.
+      allow read, write: if isOwner() && doc != 'omadaEr7206' && doc != 'quickbooksOnline';
     }
 
     match /adminAuditLogs/{id} {

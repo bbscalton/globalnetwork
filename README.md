@@ -16,6 +16,28 @@ Customers can use the browser app, or install the **customer** Android APK from 
 
 Google sign-in on the customer web app needs `bbscalton.github.io` in Firebase Console → Authentication → Settings → Authorized domains (same as the owner desk).
 
+## QuickBooks Online (owner desk)
+
+Settings → Desk → **QuickBooks Online** connects a company file via Intuit OAuth. Invoice/payment sync is not shipped yet; Connect stores tokens for later export.
+
+### Intuit developer app
+
+1. Create an app at [developer.intuit.com](https://developer.intuit.com/) → **Dashboard** → **Create an app** → QuickBooks Online.
+2. Under **Keys & OAuth**, copy the **Client ID** and **Client Secret** (use Development keys for Sandbox, Production keys for live).
+3. Add this **Redirect URI** exactly (trailing slash required):
+
+   `https://bbscalton.github.io/globalnetwork/ops/`
+
+4. Scopes: Accounting (`com.intuit.quickbooks.accounting`).
+
+### Configure on the desk
+
+1. Deploy Cloud Functions so `saveQboConfig` / `qboStartConnect` / `qboCompleteConnect` / `qboDisconnect` / `qboStatus` exist (`firebase deploy --only functions,firestore:rules`).
+2. Sign in as owner → **Settings** → paste Client ID + Secret → choose Sandbox or Production → **Save QBO credentials**.
+3. Click **Connect QuickBooks**, approve the company on Intuit, and wait for redirect back to `/ops/`. Status should show **Connected** with company name and realm ID.
+
+Secrets live in Firestore `adminConfig/quickbooksOnline` (Admin SDK / Functions only; client rules deny reads).
+
 ## Local run
 
 ```bash

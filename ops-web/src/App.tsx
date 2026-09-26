@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { useAuth } from './lib/authContext'
 import { consumeGoogleAuthError, googleAuthErrorMessage } from './lib/googleAuth'
 import * as repo from './lib/repo'
+import { completeQboOAuthIfPresent, readQboOAuthCallback } from './lib/qboOAuth'
 import { ONLINE_AFTER_MS } from './lib/firebase'
 import { deskPulse } from './lib/desk'
 import type { Customer, IssueTicket, OrgSettings, Plan } from './lib/types'
@@ -188,12 +189,14 @@ function Shell({
   linkError?: string | null
 }) {
   const owner = mode === 'owner'
+  const navigate = useNavigate()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [issues, setIssues] = useState<IssueTicket[]>([])
   const [org, setOrg] = useState<OrgSettings | null>(null)
   const [now, setNow] = useState(Date.now())
   const [error, setError] = useState<string | null>(null)
+  const [qboMsg, setQboMsg] = useState<string | null>(null)
   const warnDays = org?.renewalWarnDays ?? DEFAULT_ORG_SETTINGS.renewalWarnDays
   const botEnabled = org?.botEnabled !== false
 
@@ -214,6 +217,24 @@ function Shell({
       u4()
     }
   }, [orgId])
+
+  useEffect(() => {
+    if (!owner || !readQboOAuthCallback()) return
+    let cancelled = false
+    void completeQboOAuthIfPresent()
+      .then((msg) => {
+        if (cancelled || !msg) return
+        setQboMsg(msg)
+        navigate('/settings', { replace: true })
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'QuickBooks connect failed')
+        navigate('/settings', { replace: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [owner, navigate])
 
   const pulse = useMemo(
     () => deskPulse(customers, issues, now, ONLINE_AFTER_MS, warnDays),
@@ -282,6 +303,7 @@ function Shell({
         <CallOverlay customers={customers} />
         {linkError && <p className="fail">{linkError}</p>}
         {error && <p className="fail">{error}</p>}
+        {qboMsg && <p className="ok-text">{qboMsg}</p>}
         <Routes>
           <Route
             path="/"

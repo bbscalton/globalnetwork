@@ -14,7 +14,7 @@ import {
 import { httpsCallable } from 'firebase/functions'
 import { COL, auth, db, functions } from './firebase'
 import { ORG_ID, R2_BASE } from './admin'
-import { DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_SETTINGS, DEFAULT_POS_LOCATIONS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OmadaClientRow, type OmadaPublicConfig, type OmadaStatus, type OrgSettings, type Payment, type PaymentKind, type Plan, type PosOutlet, type VoiceCall } from './types'
+import { DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_SETTINGS, DEFAULT_POS_LOCATIONS, type ChatMessage, type Customer, type CustomerStatus, type DeskInvite, type DeskMember, type DeskRole, type IssueTicket, type OmadaClientRow, type OmadaPublicConfig, type OmadaStatus, type OrgSettings, type Payment, type PaymentKind, type Plan, type PosOutlet, type QboEnvironment, type QboPublicStatus, type VoiceCall } from './types'
 
 export { DAY_EXTENSION_RATE_XCD }
 
@@ -296,23 +296,46 @@ function callableMessage(err: unknown): string {
   const code = String(e.code ?? '')
   let message = String(e.message ?? '').replace(/^FirebaseError:\s*/i, '').trim()
   if (typeof e.details === 'string' && e.details.trim()) message = e.details.trim()
-  if (code === 'functions/not-found' || message === 'NOT_FOUND') {
-    return `${message || 'NOT_FOUND'} — this Cloud Function is not deployed. Run firebase deploy --only functions.`
+
+  // App-level callable errors — never rewrite into the billing banner.
+  if (
+    code === 'functions/permission-denied'
+    || code === 'functions/unauthenticated'
+    || code === 'functions/invalid-argument'
+    || code === 'functions/failed-precondition'
+    || code === 'functions/already-exists'
+    || code === 'functions/not-found'
+    || code === 'functions/resource-exhausted'
+    || code === 'functions/deadline-exceeded'
+    || code === 'functions/aborted'
+    || code === 'functions/out-of-range'
+    || code === 'functions/data-loss'
+  ) {
+    if (code === 'functions/not-found' || message === 'NOT_FOUND') {
+      return `${message || 'NOT_FOUND'} — this Cloud Function is not deployed. Run firebase deploy --only functions.`
+    }
+    return message || code
   }
+
   if (code === 'functions/unimplemented' || message === 'UNIMPLEMENTED') {
     return `${message || 'UNIMPLEMENTED'} — deploy Cloud Functions before using this action.`
   }
-  // Billing disabled / cold gateway failures often surface as internal or unavailable.
-  if (
+
+  // Gateway / platform failures (billing closed/disabled, Gen2 can't start).
+  // Client SDK usually only exposes "internal" / "unavailable" / HTML 5xx — Cloud Logging
+  // shows "The request failed because billing is disabled for this project."
+  const gatewayDown =
     code === 'functions/internal'
     || code === 'functions/unavailable'
     || /^internal$/i.test(message)
-    || /503|500 Server Error|Server Error/i.test(message)
-  ) {
+    || /unavailable/i.test(message)
+    || /503|500 Server Error|Server Error|not available yet/i.test(message)
+  if (gatewayDown) {
     return (
-      'Cloud Functions are down (usually billing is disabled on Firebase project globalnetwork-isp). '
-      + 'Re-enable billing, then retry. '
-      + 'https://console.developers.google.com/billing/enable?project=globalnetwork-isp'
+      'Cloud Functions are down on project globalnetwork-isp (billing account linked but closed, '
+      + 'or Blaze billing disabled). Firestore can still work. Reopen an open Cloud Billing account, '
+      + 'link it to this project, then retry. '
+      + 'https://console.cloud.google.com/billing?project=globalnetwork-isp'
     )
   }
   if (message) return message
@@ -968,6 +991,42 @@ export async function omadaEr7206SetClientBlocked(input: {
 
 export async function saveOmadaClientMap(customerId: string, mac: string): Promise<{ ok: boolean; customerId: string; mac: string }> {
   return callable('saveOmadaClientMap', { customerId, mac })
+}
+
+export async function saveQboConfig(input: {
+  clientId: string
+  clientSecret?: string
+  environment: QboEnvironment
+  redirectUri?: string
+}): Promise<{ ok: boolean; status: QboPublicStatus }> {
+  return callable('saveQboConfig', input)
+}
+
+export async function qboStatus(): Promise<{ ok: boolean; status: QboPublicStatus }> {
+  return callable('qboStatus', {})
+}
+
+export async function qboStartConnect(): Promise<{
+  ok: boolean
+  authorizeUrl: string
+  redirectUri: string
+  state: string
+}> {
+  return callable('qboStartConnect', {})
+}
+
+export async function qboCompleteConnect(input: {
+  code?: string
+  state?: string
+  realmId?: string
+  error?: string
+  errorDescription?: string
+}): Promise<{ ok: boolean; status: QboPublicStatus }> {
+  return callable('qboCompleteConnect', input)
+}
+
+export async function qboDisconnect(): Promise<{ ok: boolean; status: QboPublicStatus }> {
+  return callable('qboDisconnect', {})
 }
 
 export async function getCall(customerId: string, callId: string): Promise<VoiceCall | null> {
