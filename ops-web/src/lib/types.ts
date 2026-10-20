@@ -55,6 +55,30 @@ export type Plan = {
 /** Day-extension rate (XCD / EC$). Unpaid stacks on extensionDue. Balance = planDue + extensionDue. */
 export const DAY_EXTENSION_RATE_XCD = 6
 
+/** Customer-initiated extension request pending owner/POS approval */
+export type ExtensionRequest = {
+  id: string
+  customerId: string
+  customerName: string
+  customerEmail: string
+  customerPhone: string
+  days: number
+  ratePerDay: number
+  totalXcd: number
+  status: 'pending' | 'approved' | 'rejected'
+  requestedAtMs: number
+  currentPaidUntilMs: number
+  currentStatus: string
+  approvedAtMs?: number
+  approvedBy?: string
+  rejectedAtMs?: number
+  rejectedBy?: string
+  rejectionReason?: string
+  paidNow?: boolean
+  grantedPaidUntilMs?: number
+  processedAt?: string
+}
+
 /** Legacy partial kept for old ledger rows; new plan collects are always `full`. */
 export type PaymentKind = 'full' | 'partial' | 'grace' | 'adjust' | 'extension'
 

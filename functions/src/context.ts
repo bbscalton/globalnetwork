@@ -21,6 +21,39 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 export const DAY_EXTENSION_RATE_XCD = 6;
 /** Antigua has no DST; AST = UTC−4. Used so “days left” rolls at local midnight. */
 export const ANTIGUA_OFFSET_MS = -4 * 60 * 60 * 1000;
+/** IANA timezone for Antigua and Barbuda */
+export const ANTIGUA_TZ = "America/Antigua";
+
+/**
+ * Format a timestamp in Antigua time for display (e.g., push notifications).
+ * Returns "15 Jan 2026" format.
+ */
+export function formatAntiguaDate(ms: number): string {
+  const d = new Date(ms);
+  return d.toLocaleDateString("en-GB", {
+    timeZone: ANTIGUA_TZ,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Format a timestamp in Antigua time with time for display.
+ * Returns "15 Jan 2026, 3:45 PM" format.
+ */
+export function formatAntiguaDateTime(ms: number): string {
+  const d = new Date(ms);
+  return d.toLocaleString("en-GB", {
+    timeZone: ANTIGUA_TZ,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
 export type Ymd = { y: number; m: number; d: number };
 

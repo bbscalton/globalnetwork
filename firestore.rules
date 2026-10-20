@@ -80,14 +80,31 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /extensionRequests/{requestId} {
+      // Owner/staff can read and manage extension requests
+      allow read: if isPosStaff();
+      // Only Cloud Functions create/update extension requests
+      allow create, update, delete: if false;
+    }
+
+    match /phoneLinkRequests/{requestId} {
+      // Only owners can see phone link requests
+      allow read: if isOwner();
+      // Only Cloud Functions manage these
+      allow create, update, delete: if false;
+    }
+
     match /customers/{customerId} {
       allow read: if isPosStaff() || customerOwns(customerId);
       allow create: if isOwner();
+      // Owners can update most fields except payment/subscription fields (must go through Cloud Functions).
+      // Customers can only update heartbeat fields (lastSeenMs, fcmToken, uid) - never approvalStatus.
       allow update: if (isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['paidUntilMs', 'graceUntilMs', 'status', 'balanceDue', 'paidAmount']))
         || (customerOwns(customerId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenMs', 'fcmToken', 'uid']));
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenMs', 'fcmToken', 'uid'])
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approvalStatus']));
       allow delete: if isOwner();
 
       match /payments/{payId} {

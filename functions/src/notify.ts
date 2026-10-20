@@ -3,6 +3,118 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
 import { DEFAULT_ORG_ID, db, sendToOwners, sendToToken } from "./context";
 
+/**
+ * Alert configuration for web customers who cannot receive push notifications.
+ * Email and WhatsApp deep-link support is behind config to avoid committing secrets.
+ * 
+ * To enable email alerts:
+ * 1. Store SENDGRID_API_KEY or MAILGUN_API_KEY in Firebase environment config
+ * 2. Set adminConfig/alertConfig.emailEnabled = true
+ * 3. Set adminConfig/alertConfig.emailFromAddress = "alerts@yourdomain.com"
+ * 
+ * To enable WhatsApp deep-link (opens customer's WhatsApp app with pre-filled message):
+ * 1. Set adminConfig/alertConfig.whatsappEnabled = true
+ * 2. Set adminConfig/alertConfig.whatsappBusinessPhone = "12685551234" (no +)
+ * 
+ * The actual sending is handled by sendAlertFallback() which checks these configs.
+ */
+interface AlertConfig {
+  emailEnabled?: boolean;
+  emailFromAddress?: string;
+  emailProvider?: "sendgrid" | "mailgun";
+  whatsappEnabled?: boolean;
+  whatsappBusinessPhone?: string;
+}
+
+async function getAlertConfig(): Promise<AlertConfig> {
+  try {
+    const doc = await db.collection("adminConfig").doc("alertConfig").get();
+    if (!doc.exists) return {};
+    return doc.data() as AlertConfig;
+  } catch (e) {
+    logger.warn("getAlertConfig failed", e);
+    return {};
+  }
+}
+
+/**
+ * Send alert to web customers who cannot receive FCM push.
+ * Falls back to email or WhatsApp deep-link based on config.
+ * Does NOT commit secrets - relies on env vars or adminConfig.
+ */
+async function sendAlertFallback(
+  customer: { email?: string; phone?: string; name?: string },
+  title: string,
+  body: string,
+): Promise<{ sent: boolean; method?: string }> {
+  const config = await getAlertConfig();
+  
+  // Try email first if configured
+  if (config.emailEnabled && config.emailFromAddress && customer.email) {
+    const apiKey = process.env.SENDGRID_API_KEY || process.env.MAILGUN_API_KEY;
+    if (apiKey) {
+      try {
+        if (process.env.SENDGRID_API_KEY) {
+          const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              personalizations: [{ to: [{ email: customer.email }] }],
+              from: { email: config.emailFromAddress, name: "GlobalNetwork Antigua" },
+              subject: title,
+              content: [{ type: "text/plain", value: body }],
+            }),
+          });
+          if (res.ok || res.status === 202) {
+            return { sent: true, method: "email-sendgrid" };
+          }
+          logger.warn("SendGrid failed", { status: res.status });
+        } else if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
+          const domain = process.env.MAILGUN_DOMAIN;
+          const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              from: `GlobalNetwork <${config.emailFromAddress}>`,
+              to: customer.email,
+              subject: title,
+              text: body,
+            }),
+          });
+          if (res.ok) {
+            return { sent: true, method: "email-mailgun" };
+          }
+          logger.warn("Mailgun failed", { status: res.status });
+        }
+      } catch (e) {
+        logger.warn("Email send failed", e);
+      }
+    }
+  }
+  
+  // Log that we couldn't send (WhatsApp would need client-side handling)
+  if (config.whatsappEnabled && config.whatsappBusinessPhone && customer.phone) {
+    // WhatsApp Business API requires approved templates and secrets we don't commit.
+    // Log that a WhatsApp-capable customer missed an alert for manual follow-up.
+    logger.info("whatsapp-alert-candidate", {
+      phone: customer.phone,
+      name: customer.name,
+      title,
+    });
+    return { sent: false, method: "whatsapp-logged" };
+  }
+  
+  return { sent: false };
+}
+
+export { sendAlertFallback };
+
 const BOT_COOLDOWN_MS = 40_000;
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
 
@@ -100,14 +212,22 @@ async function ensureChatIssue(customerId: string, name: string, kind: string, t
   await customerRef.update({ openChatIssueId: ref.id });
 }
 
-export const expireSubscriptions = onSchedule("every 1 hours", async () => {
+export const expireSubscriptions = onSchedule("every 5 minutes", async () => {
   const now = Date.now();
-  const snap = await db.collection("customers").get();
+  // Query only customers due for status change: paidUntilMs <= now AND not suspended
+  // This avoids scanning all customers every run
+  const dueSnap = await db
+    .collection("customers")
+    .where("paidUntilMs", "<=", now)
+    .where("paidUntilMs", ">", 0)
+    .get();
   const omadaCfg = await db.collection("adminConfig").doc("omadaEr7206").get();
   const autoBlock = omadaCfg.get("autoSuspendOnExpire") === true;
   let flipped = 0;
   let blocked = 0;
-  for (const doc of snap.docs) {
+  let scanned = 0;
+  for (const doc of dueSnap.docs) {
+    scanned += 1;
     const status = String(doc.get("status") ?? "");
     if (status === "suspended") continue;
     const paidUntil = Number(doc.get("paidUntilMs") ?? 0);
@@ -135,12 +255,27 @@ export const expireSubscriptions = onSchedule("every 1 hours", async () => {
       flipped += 1;
       const left = Math.ceil((paidUntil - now) / (24 * 60 * 60 * 1000));
       if (left <= 3) {
-        await sendToToken(
-          doc.get("fcmToken") as string | undefined,
-          "GlobalNetwork",
-          next === "expired" ? "Your internet subscription has expired." : "Your service is in a grace period.",
-          { type: "expiry", customerId: doc.id },
-        );
+        const fcmToken = doc.get("fcmToken") as string | undefined;
+        const alertTitle = "GlobalNetwork";
+        const alertBody = next === "expired" 
+          ? "Your internet subscription has expired." 
+          : "Your service is in a grace period.";
+        
+        // Try FCM push first
+        await sendToToken(fcmToken, alertTitle, alertBody, { type: "expiry", customerId: doc.id });
+        
+        // For web customers without FCM token, try email/WhatsApp fallback
+        if (!fcmToken) {
+          await sendAlertFallback(
+            {
+              email: String(doc.get("email") ?? ""),
+              phone: String(doc.get("phone") ?? ""),
+              name: String(doc.get("name") ?? ""),
+            },
+            alertTitle,
+            alertBody,
+          );
+        }
       }
       if (autoBlock && next === "expired") {
         const mac = String(doc.get("omadaClientMac") ?? doc.get("cpeMac") ?? "");
@@ -156,7 +291,7 @@ export const expireSubscriptions = onSchedule("every 1 hours", async () => {
       }
     }
   }
-  logger.info("expireSubscriptions", { scanned: snap.size, flipped, blocked });
+  logger.info("expireSubscriptions", { scanned, flipped, blocked });
 });
 
 export const onChatCreated = onDocumentCreated(

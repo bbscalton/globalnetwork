@@ -140,7 +140,8 @@ class GnApi {
       if (durationMs > 0) 'durationMs': durationMs,
       if (lat != null) 'lat': lat,
       if (lng != null) 'lng': lng,
-      'createdAtMs': DateTime.now().millisecondsSinceEpoch,
+      'createdAtMs': FieldValue.serverTimestamp(),
+      'clientCreatedAtMs': DateTime.now().millisecondsSinceEpoch,
     });
   }
 
@@ -263,6 +264,25 @@ class GnApi {
       'photoUrls': photoUrls,
       'createdAtMs': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  /// Get the current extension rate from the server.
+  Future<Map<String, dynamic>> getExtensionRate() async {
+    final res = await _functions.httpsCallable('getExtensionRate').call<Map<String, dynamic>>({});
+    return Map<String, dynamic>.from(res.data);
+  }
+
+  /// Request a day extension. Price is computed server-side.
+  /// Returns the request details including the server-computed total.
+  Future<Map<String, dynamic>> requestDayExtension({
+    required String customerId,
+    required int days,
+  }) async {
+    final res = await _functions.httpsCallable('requestDayExtension').call<Map<String, dynamic>>({
+      'customerId': customerId,
+      'days': days,
+    });
+    return Map<String, dynamic>.from(res.data);
   }
 
   Future<List<Map<String, dynamic>>> fetchIceServers() async {

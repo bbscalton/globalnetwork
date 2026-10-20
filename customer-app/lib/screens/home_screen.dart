@@ -12,6 +12,7 @@ class HomeScreen extends StatelessWidget {
     required this.onIssue,
     required this.onPayments,
     required this.onSettings,
+    required this.onExtendService,
   });
 
   final CustomerAccount account;
@@ -21,6 +22,11 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onIssue;
   final VoidCallback onPayments;
   final VoidCallback onSettings;
+  final VoidCallback onExtendService;
+
+  bool get _isExpired => account.status == 'expired' || account.daysLeft() <= 0;
+  bool get _isNearExpiry => account.daysLeft() > 0 && account.daysLeft() <= 3;
+  bool get _showExtendButton => _isExpired || _isNearExpiry;
 
   Color get _tone {
     switch (account.status) {
@@ -126,6 +132,19 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(account.serviceDetail, style: const TextStyle(height: 1.45, fontSize: 15)),
+          if (_showExtendButton) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onExtendService,
+              icon: const Icon(Icons.add_circle_outline),
+              style: FilledButton.styleFrom(
+                backgroundColor: _isExpired ? const Color(0xFFF87171) : const Color(0xFFFBBF24),
+                foregroundColor: _isExpired ? Colors.white : GnTheme.navy,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              label: Text(_isExpired ? 'Extend Service' : 'Extend Before Expiry'),
+            ),
+          ],
           const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: onChat,

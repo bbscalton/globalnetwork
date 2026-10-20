@@ -7,6 +7,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   type Unsubscribe,
@@ -140,6 +141,14 @@ export function observePlans(onData: (rows: Plan[]) => void, onError?: (e: Error
   )
 }
 
+function extractTimestamp(value: unknown, fallback: number): number {
+  if (typeof value === 'number') return value
+  if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
+    return value.toMillis() as number
+  }
+  return fallback
+}
+
 export function observeChat(customerId: string, onData: (rows: ChatMessage[]) => void): Unsubscribe {
   const database = requireDb()
   const q = query(collection(database, COL.customers, customerId, COL.chatMessages), orderBy('createdAtMs', 'asc'))
@@ -148,6 +157,7 @@ export function observeChat(customerId: string, onData: (rows: ChatMessage[]) =>
       snap.docs.map((d) => {
         const data = d.data()
         const fromRaw = String(data.from ?? 'customer')
+        const clientFallback = Number(data.clientCreatedAtMs ?? 0)
         return {
           id: d.id,
           from: fromRaw === 'bot' ? 'bot' : isOwnerSender(fromRaw) ? 'owner' : 'customer',
@@ -155,7 +165,7 @@ export function observeChat(customerId: string, onData: (rows: ChatMessage[]) =>
           kind: String(data.kind ?? 'text'),
           mediaUrl: data.mediaUrl == null ? null : String(data.mediaUrl),
           durationMs: Number(data.durationMs ?? 0),
-          createdAtMs: Number(data.createdAtMs ?? 0),
+          createdAtMs: extractTimestamp(data.createdAtMs, clientFallback),
           editedAtMs: data.editedAtMs == null ? undefined : Number(data.editedAtMs),
           lat: data.lat == null ? null : Number(data.lat),
           lng: data.lng == null ? null : Number(data.lng),
@@ -232,7 +242,8 @@ export async function sendChat(customerId: string, text: string, from: 'owner' |
     from,
     text,
     kind: 'text',
-    createdAtMs: Date.now(),
+    createdAtMs: serverTimestamp(),
+    clientCreatedAtMs: Date.now(),
   })
   if (from === 'owner') {
     await updateDoc(doc(database, COL.customers, customerId), { chatAgentLive: true })
@@ -248,7 +259,8 @@ export async function setChatAgentLive(customerId: string, live: boolean): Promi
       ? 'A live GlobalNetwork agent has joined. The desk bot is stepping back.'
       : 'The live agent stepped back. I will keep covering until someone takes over again.',
     kind: 'text',
-    createdAtMs: Date.now(),
+    createdAtMs: serverTimestamp(),
+    clientCreatedAtMs: Date.now(),
   })
 }
 
@@ -1032,4 +1044,67 @@ export async function qboDisconnect(): Promise<{ ok: boolean; status: QboPublicS
 export async function getCall(customerId: string, callId: string): Promise<VoiceCall | null> {
   const snap = await getDoc(doc(requireDb(), COL.customers, customerId, COL.calls, callId))
   return snap.exists() ? asCall(snap.id, snap.data() as Record<string, unknown>, customerId) : null
+}
+
+// Extension Requests
+
+import type { ExtensionRequest } from './types'
+
+export function observeExtensionRequests(
+  onData: (rows: ExtensionRequest[]) => void,
+  onError?: (e: Error) => void,
+): Unsubscribe {
+  const database = requireDb()
+  const q = query(collection(database, 'extensionRequests'), orderBy('requestedAtMs', 'desc'))
+  return onSnapshot(
+    q,
+    (snap) => {
+      onData(
+        snap.docs.map((d) => {
+          const data = d.data()
+          return {
+            id: d.id,
+            customerId: String(data.customerId ?? ''),
+            customerName: String(data.customerName ?? ''),
+            customerEmail: String(data.customerEmail ?? ''),
+            customerPhone: String(data.customerPhone ?? ''),
+            days: Number(data.days ?? 0),
+            ratePerDay: Number(data.ratePerDay ?? 6),
+            totalXcd: Number(data.totalXcd ?? 0),
+            status: String(data.status ?? 'pending') as ExtensionRequest['status'],
+            requestedAtMs: Number(data.requestedAtMs ?? 0),
+            currentPaidUntilMs: Number(data.currentPaidUntilMs ?? 0),
+            currentStatus: String(data.currentStatus ?? ''),
+            approvedAtMs: data.approvedAtMs == null ? undefined : Number(data.approvedAtMs),
+            approvedBy: data.approvedBy == null ? undefined : String(data.approvedBy),
+            rejectedAtMs: data.rejectedAtMs == null ? undefined : Number(data.rejectedAtMs),
+            rejectedBy: data.rejectedBy == null ? undefined : String(data.rejectedBy),
+            rejectionReason: data.rejectionReason == null ? undefined : String(data.rejectionReason),
+            paidNow: data.paidNow === true,
+            grantedPaidUntilMs: data.grantedPaidUntilMs == null ? undefined : Number(data.grantedPaidUntilMs),
+            processedAt: data.processedAt == null ? undefined : String(data.processedAt),
+          }
+        }),
+      )
+    },
+    (e) => onError?.(e),
+  )
+}
+
+export async function processExtensionRequest(input: {
+  requestId: string
+  decision: 'approved' | 'rejected'
+  paidNow?: boolean
+  reason?: string
+  locationId?: string
+  locationName?: string
+}): Promise<{
+  ok: boolean
+  decision: string
+  paidUntilMs?: number
+  days?: number
+  totalXcd?: number
+  paidNow?: boolean
+}> {
+  return callable('processExtensionRequest', input)
 }

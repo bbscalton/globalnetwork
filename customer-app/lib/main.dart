@@ -19,6 +19,7 @@ import 'screens/pending_approval_screen.dart';
 import 'screens/registration_wizard.dart';
 import 'screens/settings_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/extend_service_screen.dart';
 import 'services/api.dart';
 import 'theme.dart';
 
@@ -152,42 +153,71 @@ class _GateState extends State<Gate> {
     super.dispose();
   }
 
+  String? _errorType;
+
   Future<void> _bindCustomer() async {
     setState(() {
       linking = true;
       linkError = null;
+      _errorType = null;
     });
     try {
       final id = await api.linkAccount();
       await _customerSub?.cancel();
-      _customerSub = api.watchCustomer(id).listen((value) {
-        if (!mounted) return;
-        setState(() => account = value);
-        if (value != null) {
-          final now = DateTime.now();
-          final due = _lastHeartbeat == null || now.difference(_lastHeartbeat!) > const Duration(minutes: 2);
-          if (due) {
-            _lastHeartbeat = now;
-            api.heartbeat(value.id).ignore();
+      _customerSub = api.watchCustomer(id).listen(
+        (value) {
+          if (!mounted) return;
+          setState(() => account = value);
+          if (value != null) {
+            final now = DateTime.now();
+            final due = _lastHeartbeat == null || now.difference(_lastHeartbeat!) > const Duration(minutes: 2);
+            if (due) {
+              _lastHeartbeat = now;
+              api.heartbeat(value.id).ignore();
+            }
           }
-        }
-      });
+        },
+        onError: (e) {
+          if (!mounted) return;
+          setState(() {
+            _errorType = 'stream_error';
+            linkError = 'Connection lost. Pull down to refresh or check your internet.';
+          });
+        },
+      );
     } on FirebaseFunctionsException catch (e) {
       final raw = (e.message ?? e.code).trim();
       final looksInternal = e.code == 'internal' || raw.toLowerCase() == 'internal';
+      final looksUnavailable = e.code == 'unavailable' || raw.toLowerCase().contains('unavailable');
+      final looksBilling = raw.toLowerCase().contains('billing') || raw.contains('503');
       setState(() {
-        linkError = e.code == 'not-found'
-            ? 'No customer record for this email yet. Ask the owner to create your account on the GlobalNetwork desk.'
-            : looksInternal || e.code == 'unavailable'
-                ? 'Could not open your account. Check your internet and try again.'
-                : (e.message ?? e.code);
+        if (e.code == 'not-found') {
+          _errorType = 'no_account';
+          linkError = 'No customer record for this email yet. Ask the owner to create your account on the GlobalNetwork desk.';
+        } else if (looksBilling) {
+          _errorType = 'backend_down';
+          linkError = 'GlobalNetwork services are temporarily unavailable (backend maintenance). Please try again later.';
+        } else if (looksInternal || looksUnavailable) {
+          _errorType = 'backend_down';
+          linkError = 'Could not connect to GlobalNetwork. Check your internet and try again.';
+        } else if (e.code == 'permission-denied') {
+          _errorType = 'email_mismatch';
+          linkError = 'This email is not linked to a GlobalNetwork account. Sign in with the email you registered with.';
+        } else {
+          _errorType = 'unknown';
+          linkError = e.message ?? e.code;
+        }
       });
     } catch (e) {
       final raw = e.toString();
       setState(() {
-        linkError = raw.toLowerCase().contains('internal')
-            ? 'Could not open your account. Check your internet and try again.'
-            : raw.replaceFirst('Exception: ', '');
+        if (raw.toLowerCase().contains('internal') || raw.toLowerCase().contains('unavailable')) {
+          _errorType = 'backend_down';
+          linkError = 'Could not connect to GlobalNetwork. Check your internet and try again.';
+        } else {
+          _errorType = 'unknown';
+          linkError = raw.replaceFirst('Exception: ', '');
+        }
       });
     } finally {
       if (mounted) setState(() => linking = false);
@@ -214,6 +244,35 @@ class _GateState extends State<Gate> {
       );
     }
     if (account == null) {
+      IconData errorIcon;
+      Color errorColor;
+      String errorTitle;
+      switch (_errorType) {
+        case 'no_account':
+          errorIcon = Icons.person_off_outlined;
+          errorColor = const Color(0xFFFBBF24);
+          errorTitle = 'No account found';
+          break;
+        case 'email_mismatch':
+          errorIcon = Icons.email_outlined;
+          errorColor = const Color(0xFFF87171);
+          errorTitle = 'Email mismatch';
+          break;
+        case 'backend_down':
+          errorIcon = Icons.cloud_off_outlined;
+          errorColor = const Color(0xFFF87171);
+          errorTitle = 'Service unavailable';
+          break;
+        case 'stream_error':
+          errorIcon = Icons.wifi_off_outlined;
+          errorColor = const Color(0xFFFBBF24);
+          errorTitle = 'Connection lost';
+          break;
+        default:
+          errorIcon = Icons.public;
+          errorColor = GnTheme.cyan;
+          errorTitle = 'Your GlobalNetwork account';
+      }
       return Scaffold(
         appBar: AppBar(title: const Text('GlobalNetwork')),
         body: Padding(
@@ -221,12 +280,12 @@ class _GateState extends State<Gate> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.public, size: 64, color: GnTheme.cyan),
+              Icon(errorIcon, size: 64, color: errorColor),
               const SizedBox(height: 16),
-              const Text(
-                'Your GlobalNetwork account',
+              Text(
+                errorTitle,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 12),
               Text(
@@ -287,6 +346,11 @@ class _GateState extends State<Gate> {
       onPayments: () {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => PaymentHistoryScreen(api: api, customerId: account!.id)),
+        );
+      },
+      onExtendService: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ExtendServiceScreen(api: api, account: account!)),
         );
       },
       onSettings: () {
