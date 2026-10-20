@@ -23,6 +23,12 @@ export type Customer = {
   extensionDue: number
   /** Roster total: planDue + extensionDue. */
   balanceDue: number
+  /** Total amount charged to customer (server-computed) */
+  totalOwed: number
+  /** Total amount paid by customer (server-computed) */
+  totalPaid: number
+  /** Outstanding balance: totalOwed - totalPaid (server-computed) */
+  balanceOwed: number
   paidUntilMs: number | null
   graceUntilMs: number | null
   lastSeenMs: number
@@ -292,6 +298,66 @@ export type OmadaClientRow = {
   ssid: string
   deviceType: string
   likelyCpe: boolean
+}
+
+// Omada Open API types (v5.13+ client_credentials OAuth)
+export type OmadaOpenApiConfig = {
+  controllerUrl: string
+  clientIdSaved: boolean
+  clientIdLast4: string
+  clientSecretSaved: boolean
+  siteName: string
+  cfAccessConfigured: boolean
+  allowInsecureTls: boolean
+  autoBlockOnExpire: boolean
+  autoUnblockOnPayment: boolean
+  dryRun: boolean
+}
+
+export type OmadaNetworkStatus = {
+  configured: boolean
+  connected: boolean
+  controllerOk: boolean
+  authOk: boolean
+  siteFound: boolean
+  siteName: string
+  siteId: string
+  controllerId: string
+  error: string
+  config: OmadaOpenApiConfig
+  dryRun: boolean
+}
+
+export type OmadaClientInfo = {
+  mac: string
+  ip: string
+  hostname: string
+  blocked: boolean
+  active: boolean
+  wireless: boolean
+  apName: string
+  apMac: string
+  ssid: string
+  trafficDown: number
+  trafficUp: number
+  lastSeenMs: number
+  customerId: string
+  customerName: string
+  likelyCpe: boolean
+}
+
+export type OmadaActionLog = {
+  id: string
+  action: 'block' | 'unblock' | 'test'
+  mac: string
+  customerId: string
+  customerName: string
+  trigger: 'expiry' | 'payment' | 'manual' | 'test'
+  dryRun: boolean
+  success: boolean
+  error: string
+  atMs: number
+  byEmail: string
 }
 
 export type IssueTicket = {

@@ -21,6 +21,7 @@ import 'screens/settings_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/extend_service_screen.dart';
 import 'services/api.dart';
+import 'services/version_check.dart';
 import 'theme.dart';
 
 const r2BaseUrl = String.fromEnvironment(
@@ -114,6 +115,7 @@ class Gate extends StatefulWidget {
 
 class _GateState extends State<Gate> {
   late final GnApi api;
+  late final VersionCheckService _versionCheck;
   User? user;
   CustomerAccount? account;
   String? linkError;
@@ -122,11 +124,18 @@ class _GateState extends State<Gate> {
   StreamSubscription<CustomerAccount?>? _customerSub;
   Timer? _dayTick;
   DateTime? _lastHeartbeat;
+  
+  // Version check state
+  VersionCheckResult? _versionResult;
+  bool _versionCheckDone = false;
+  bool _updateDismissed = false;
 
   @override
   void initState() {
     super.initState();
     api = GnApi(r2BaseUrl: r2BaseUrl);
+    _versionCheck = VersionCheckService();
+    _checkAppVersion();
     _dayTick = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted || account == null) return;
       setState(() {});
@@ -143,6 +152,16 @@ class _GateState extends State<Gate> {
         _bindCustomer();
       }
     });
+  }
+
+  Future<void> _checkAppVersion() async {
+    final result = await _versionCheck.check();
+    if (mounted) {
+      setState(() {
+        _versionResult = result;
+        _versionCheckDone = true;
+      });
+    }
   }
 
   @override
@@ -224,8 +243,68 @@ class _GateState extends State<Gate> {
     }
   }
 
+  Widget _buildUpdateScreen({required bool required}) {
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.system_update_outlined, size: 80, color: GnTheme.cyan),
+              const SizedBox(height: 24),
+              Text(
+                required ? 'Update Required' : 'Update Available',
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _versionResult?.message ?? 'A new version of GlobalNetwork is available.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Current version: $currentBuildNumber • Latest: ${_versionResult?.latestVersion ?? "?"}',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () {
+                  final url = _versionResult?.downloadUrl ?? '';
+                  if (url.isNotEmpty) {
+                    _versionCheck.openDownloadUrl(url);
+                  }
+                },
+                icon: const Icon(Icons.download),
+                label: const Text('Download Update'),
+              ),
+              if (!required) ...[
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => setState(() => _updateDismissed = true),
+                  child: const Text('Continue without updating'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Show mandatory update screen if update is required
+    if (_versionCheckDone && _versionResult != null && _versionResult!.updateRequired) {
+      return _buildUpdateScreen(required: true);
+    }
+    
+    // Show optional update prompt (can be dismissed)
+    if (_versionCheckDone && _versionResult != null && _versionResult!.updateAvailable && !_updateDismissed) {
+      return _buildUpdateScreen(required: false);
+    }
+
     if (user == null) {
       return LoginScreen(api: api, onReady: () => setState(() {}));
     }

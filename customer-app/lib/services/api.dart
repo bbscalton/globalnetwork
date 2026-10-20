@@ -285,6 +285,14 @@ class GnApi {
     return Map<String, dynamic>.from(res.data);
   }
 
+  /// Get balance summary for a customer.
+  Future<Map<String, dynamic>> getBalanceSummary(String customerId) async {
+    final res = await _functions.httpsCallable('getBalanceSummary').call<Map<String, dynamic>>({
+      'customerId': customerId,
+    });
+    return Map<String, dynamic>.from(res.data);
+  }
+
   Future<List<Map<String, dynamic>>> fetchIceServers() async {
     final fallback = [
       {

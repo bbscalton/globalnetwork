@@ -327,6 +327,11 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
     { type: "subscription", customerId },
   );
 
+  // Auto-unblock CPE on payment (fire and forget)
+  import("./omadaOpenApi")
+    .then(({ unblockCustomerCpeOnPayment }) => unblockCustomerCpeOnPayment(customerId))
+    .catch((err) => logger.warn("omada_unblock_import_failed", { customerId, error: err instanceof Error ? err.message : String(err) }));
+
   return result;
 });
 
@@ -430,7 +435,312 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
     { type: "subscription", customerId },
   );
 
+  // Auto-unblock CPE on extension (fire and forget)
+  import("./omadaOpenApi")
+    .then(({ unblockCustomerCpeOnPayment }) => unblockCustomerCpeOnPayment(customerId))
+    .catch((err) => logger.warn("omada_unblock_import_failed", { customerId, error: err instanceof Error ? err.message : String(err) }));
+
   return result;
+});
+
+/**
+ * Collect a payment (partial or full) and optionally grant service days.
+ * 
+ * Unlike extendSubscription which requires full plan fee:
+ * - Accepts any positive amount
+ * - Records payment against the customer's balance
+ * - Balance = planDue + extensionDue - payments applied
+ * - Can grant service days even with outstanding balance (grantDays option)
+ * 
+ * Balance tracking:
+ * - `totalOwed`: Total amount owed (plan fee + extensions charged)
+ * - `totalPaid`: Total amount collected to date
+ * - `balanceOwed`: totalOwed - totalPaid (can be negative for overpayment/credit)
+ * - All stored server-side, never trust client-computed values
+ */
+export const collectPayment = onCall(CALLABLE, async (request) => {
+  const staff = await requirePosStaff(request);
+  const customerId = String(request.data?.customerId ?? "");
+  const amountPaid = Number(request.data?.amountPaid ?? 0);
+  const grantDays = Math.floor(Number(request.data?.grantDays ?? 0));
+  const note = String(request.data?.note ?? "").trim();
+  const site = collectionSite(request.data, staff);
+  
+  if (!customerId) {
+    throw new HttpsError("invalid-argument", "customerId is required.");
+  }
+  if (!Number.isFinite(amountPaid) || amountPaid <= 0) {
+    throw new HttpsError("invalid-argument", "amountPaid must be a positive number.");
+  }
+  if (grantDays < 0) {
+    throw new HttpsError("invalid-argument", "grantDays cannot be negative.");
+  }
+  
+  const ref = db.collection("customers").doc(customerId);
+  const now = Date.now();
+  
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
+    
+    const feeAmount = Number(snap.get("feeAmount") ?? 0);
+    const dues = readDues(snap);
+    const prevTotalOwed = Number(snap.get("totalOwed") ?? dues.planDue + dues.extensionDue);
+    const prevTotalPaid = Number(snap.get("totalPaid") ?? Number(snap.get("paidAmount") ?? 0));
+    const prevBalanceOwed = Number(snap.get("balanceOwed") ?? prevTotalOwed - prevTotalPaid);
+    const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
+    const statusNow = String(snap.get("status") ?? "expired");
+    
+    // Apply payment to balance
+    const totalPaid = prevTotalPaid + amountPaid;
+    const balanceOwed = Math.max(0, prevTotalOwed - totalPaid);
+    
+    // Calculate how much of the payment goes to plan vs extension
+    let planCollected = 0;
+    let extensionCollected = 0;
+    let remaining = amountPaid;
+    
+    // Apply to plan due first
+    if (dues.planDue > 0 && remaining > 0) {
+      planCollected = Math.min(dues.planDue, remaining);
+      remaining -= planCollected;
+    }
+    // Then apply to extension due
+    if (dues.extensionDue > 0 && remaining > 0) {
+      extensionCollected = Math.min(dues.extensionDue, remaining);
+      remaining -= extensionCollected;
+    }
+    
+    const newPlanDue = Math.max(0, dues.planDue - planCollected);
+    const newExtensionDue = Math.max(0, dues.extensionDue - extensionCollected);
+    const newBalanceDue = totalDue(newPlanDue, newExtensionDue);
+    
+    // Optionally grant service days
+    let paidUntilMs = prevUntil;
+    let newStatus = statusNow;
+    if (grantDays > 0) {
+      const stillActive = (statusNow === "active" || statusNow === "grace") && prevUntil > now;
+      paidUntilMs = paidUntilAfterGrant(prevUntil, grantDays, now, stillActive);
+      newStatus = planCollected >= feeAmount ? "active" : "grace";
+    }
+    
+    const payMeta = {
+      atMs: now,
+      byUid: staff.uid,
+      collectedByUid: staff.uid,
+      collectedByEmail: staff.email,
+      locationId: site.locationId,
+      locationName: site.locationName,
+      channel: site.locationId === OWNER_DESK_OUTLET.locationId ? "desk" : "pos",
+    };
+    
+    const customerUpdate: Record<string, unknown> = {
+      totalPaid,
+      totalOwed: prevTotalOwed,
+      balanceOwed,
+      planDue: newPlanDue,
+      extensionDue: newExtensionDue,
+      balanceDue: newBalanceDue,
+      paidAmount: totalPaid,
+      lastPaymentAmount: amountPaid,
+      lastPaymentMs: now,
+      updatedAtMs: now,
+    };
+    
+    if (grantDays > 0) {
+      customerUpdate.paidUntilMs = paidUntilMs;
+      customerUpdate.status = newStatus;
+      if (newStatus === "grace") {
+        customerUpdate.graceUntilMs = paidUntilMs;
+      } else {
+        customerUpdate.graceUntilMs = null;
+      }
+      customerUpdate.approvalStatus = "approved";
+      customerUpdate.approvedAtMs = now;
+    }
+    
+    tx.update(ref, customerUpdate);
+    
+    // Record the payment
+    tx.set(ref.collection("payments").doc(), {
+      amount: amountPaid,
+      kind: grantDays > 0 ? (planCollected >= feeAmount ? "full" : "partial") : "partial",
+      daysGranted: grantDays,
+      note: note || (grantDays > 0 
+        ? `Partial payment EC$${amountPaid} · ${grantDays} days granted with EC$${balanceOwed.toFixed(2)} balance`
+        : `Payment toward balance · EC$${amountPaid}`),
+      planCollected,
+      extensionCollected,
+      balanceOwedBefore: prevBalanceOwed,
+      balanceOwedAfter: balanceOwed,
+      ...payMeta,
+    });
+    
+    return {
+      paidUntilMs,
+      status: newStatus,
+      amountPaid,
+      daysGranted: grantDays,
+      totalOwed: prevTotalOwed,
+      totalPaid,
+      balanceOwed,
+      planDue: newPlanDue,
+      extensionDue: newExtensionDue,
+      balanceDue: newBalanceDue,
+      planCollected,
+      extensionCollected,
+    };
+  });
+  
+  await writeAudit({
+    action: "collect_payment",
+    adminEmail: staff.email,
+    targetUid: customerId,
+    detail: `EC$${amountPaid} paid · ${grantDays}d granted · balance EC$${result.balanceOwed.toFixed(2)}`,
+  });
+  
+  const customer = await ref.get();
+  if (grantDays > 0) {
+    await sendToToken(
+      customer.get("fcmToken") as string | undefined,
+      "GlobalNetwork payment received",
+      result.balanceOwed > 0
+        ? `EC$${amountPaid} received. Service extended to ${formatAntiguaDate(result.paidUntilMs)}. Balance owed: EC$${result.balanceOwed.toFixed(2)}.`
+        : `EC$${amountPaid} received. Service extended to ${formatAntiguaDate(result.paidUntilMs)}. Paid in full!`,
+      { type: "payment", customerId },
+    );
+  } else {
+    await sendToToken(
+      customer.get("fcmToken") as string | undefined,
+      "GlobalNetwork payment received",
+      result.balanceOwed > 0
+        ? `EC$${amountPaid} received toward your balance. Remaining: EC$${result.balanceOwed.toFixed(2)}.`
+        : `EC$${amountPaid} received. Your balance is now paid in full!`,
+      { type: "payment", customerId },
+    );
+  }
+  
+  // Auto-unblock CPE on payment (fire and forget) - especially important for partial payments with days granted
+  if (grantDays > 0) {
+    import("./omadaOpenApi")
+      .then(({ unblockCustomerCpeOnPayment }) => unblockCustomerCpeOnPayment(customerId))
+      .catch((err) => logger.warn("omada_unblock_import_failed", { customerId, error: err instanceof Error ? err.message : String(err) }));
+  }
+  
+  return result;
+});
+
+/**
+ * Add charges to a customer's balance without collecting payment.
+ * Used to record plan fees or other charges.
+ */
+export const addCharge = onCall(CALLABLE, async (request) => {
+  const staff = await requireManager(request);
+  const customerId = String(request.data?.customerId ?? "");
+  const amount = Number(request.data?.amount ?? 0);
+  const description = String(request.data?.description ?? "").trim();
+  const chargeType = String(request.data?.chargeType ?? "plan").trim();
+  
+  if (!customerId) {
+    throw new HttpsError("invalid-argument", "customerId is required.");
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new HttpsError("invalid-argument", "amount must be a positive number.");
+  }
+  
+  const ref = db.collection("customers").doc(customerId);
+  const now = Date.now();
+  
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
+    
+    const dues = readDues(snap);
+    const prevTotalOwed = Number(snap.get("totalOwed") ?? dues.planDue + dues.extensionDue);
+    const prevTotalPaid = Number(snap.get("totalPaid") ?? Number(snap.get("paidAmount") ?? 0));
+    
+    const totalOwed = prevTotalOwed + amount;
+    const balanceOwed = Math.max(0, totalOwed - prevTotalPaid);
+    
+    let newPlanDue = dues.planDue;
+    let newExtensionDue = dues.extensionDue;
+    
+    if (chargeType === "extension") {
+      newExtensionDue += amount;
+    } else {
+      newPlanDue += amount;
+    }
+    
+    tx.update(ref, {
+      totalOwed,
+      balanceOwed,
+      planDue: newPlanDue,
+      extensionDue: newExtensionDue,
+      balanceDue: totalDue(newPlanDue, newExtensionDue),
+      updatedAtMs: now,
+    });
+    
+    return { totalOwed, balanceOwed, planDue: newPlanDue, extensionDue: newExtensionDue };
+  });
+  
+  await writeAudit({
+    action: "add_charge",
+    adminEmail: staff.email,
+    targetUid: customerId,
+    detail: `${chargeType}: EC$${amount} - ${description || "No description"}`,
+  });
+  
+  return { ok: true, ...result, chargeType, amount, description };
+});
+
+/**
+ * Get the current balance summary for a customer.
+ */
+export const getBalanceSummary = onCall(CALLABLE, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  
+  const customerId = String(request.data?.customerId ?? "");
+  if (!customerId) {
+    throw new HttpsError("invalid-argument", "customerId is required.");
+  }
+  
+  const ref = db.collection("customers").doc(customerId);
+  const snap = await ref.get();
+  
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "Customer not found.");
+  }
+  
+  // Check ownership or staff access
+  const isOwn = snap.get("uid") === uid;
+  if (!isOwn) {
+    // Check if user is staff
+    const memberSnap = await db.collection("deskMembers").doc(uid).get();
+    const role = memberSnap.exists ? String(memberSnap.get("role") ?? "") : "";
+    if (role !== "owner" && role !== "manager" && role !== "cashier") {
+      throw new HttpsError("permission-denied", "Not authorized to view this customer.");
+    }
+  }
+  
+  const dues = readDues(snap);
+  const totalOwed = Number(snap.get("totalOwed") ?? dues.planDue + dues.extensionDue);
+  const totalPaid = Number(snap.get("totalPaid") ?? Number(snap.get("paidAmount") ?? 0));
+  const balanceOwed = Number(snap.get("balanceOwed") ?? Math.max(0, totalOwed - totalPaid));
+  
+  return {
+    customerId,
+    totalOwed,
+    totalPaid,
+    balanceOwed,
+    planDue: dues.planDue,
+    extensionDue: dues.extensionDue,
+    balanceDue: totalDue(dues.planDue, dues.extensionDue),
+    feeAmount: Number(snap.get("feeAmount") ?? 0),
+    paidUntilMs: snap.get("paidUntilMs") ?? null,
+    status: String(snap.get("status") ?? "expired"),
+    currency: CURRENCY,
+  };
 });
 
 export const suspendCustomer = onCall(CALLABLE, async (request) => {

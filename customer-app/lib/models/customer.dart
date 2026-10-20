@@ -18,6 +18,9 @@ class CustomerAccount {
     this.lat,
     this.lng,
     this.locationLabel = '',
+    this.totalOwed = 0,
+    this.totalPaid = 0,
+    this.balanceOwed = 0,
   });
 
   final String id;
@@ -38,6 +41,12 @@ class CustomerAccount {
   final double? lat;
   final double? lng;
   final String locationLabel;
+  /// Total amount charged to this customer (plan fees + extensions)
+  final double totalOwed;
+  /// Total amount paid by this customer
+  final double totalPaid;
+  /// Outstanding balance: totalOwed - totalPaid (server-computed)
+  final double balanceOwed;
 
   bool get needsRegistration => approvalStatus == 'none' || approvalStatus == 'rejected';
   bool get isPendingApproval => approvalStatus == 'pending' || approvalStatus.isEmpty;
@@ -133,6 +142,12 @@ class CustomerAccount {
   }
 
   factory CustomerAccount.from(String id, Map<String, dynamic> data) {
+    // Compute balanceOwed from server fields, fallback to balanceDue for legacy
+    final totalOwed = (data['totalOwed'] as num?)?.toDouble() ?? 0;
+    final totalPaid = (data['totalPaid'] as num?)?.toDouble() ?? 0;
+    final balanceOwed = (data['balanceOwed'] as num?)?.toDouble() ?? 
+        (totalOwed > 0 ? totalOwed - totalPaid : (data['balanceDue'] as num?)?.toDouble() ?? 0);
+    
     return CustomerAccount(
       id: id,
       name: (data['name'] ?? '') as String,
@@ -152,6 +167,9 @@ class CustomerAccount {
       lat: (data['lat'] as num?)?.toDouble(),
       lng: (data['lng'] as num?)?.toDouble(),
       locationLabel: (data['locationLabel'] ?? '') as String,
+      totalOwed: totalOwed,
+      totalPaid: totalPaid,
+      balanceOwed: balanceOwed,
     );
   }
 }

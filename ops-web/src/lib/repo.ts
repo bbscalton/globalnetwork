@@ -48,6 +48,14 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
       }
       return Number(data.balanceDue ?? 0)
     })(),
+    totalOwed: Number(data.totalOwed ?? 0),
+    totalPaid: Number(data.totalPaid ?? Number(data.paidAmount ?? 0)),
+    balanceOwed: (() => {
+      if (data.balanceOwed != null) return Math.max(0, Number(data.balanceOwed))
+      const owed = Number(data.totalOwed ?? 0)
+      const paid = Number(data.totalPaid ?? Number(data.paidAmount ?? 0))
+      return owed > 0 ? Math.max(0, owed - paid) : Number(data.balanceDue ?? 0)
+    })(),
     paidUntilMs: data.paidUntilMs == null ? null : Number(data.paidUntilMs),
     graceUntilMs: data.graceUntilMs == null ? null : Number(data.graceUntilMs),
     lastSeenMs: Number(data.lastSeenMs ?? 0),
@@ -1005,6 +1013,61 @@ export async function saveOmadaClientMap(customerId: string, mac: string): Promi
   return callable('saveOmadaClientMap', { customerId, mac })
 }
 
+// Omada Open API (v5.13+ client_credentials OAuth)
+
+export async function saveOmadaOpenApiConfig(input: {
+  controllerUrl?: string
+  clientId?: string
+  clientSecret?: string
+  siteName?: string
+  cfAccessClientId?: string
+  cfAccessClientSecret?: string
+  allowInsecureTls?: boolean
+  autoBlockOnExpire?: boolean
+  autoUnblockOnPayment?: boolean
+  dryRun?: boolean
+}): Promise<{ ok: boolean; config: import('./types').OmadaOpenApiConfig }> {
+  return callable('saveOmadaOpenApiConfig', input)
+}
+
+export async function omadaOpenApiStatus(): Promise<import('./types').OmadaNetworkStatus> {
+  return callable('omadaOpenApiStatus', {})
+}
+
+export async function omadaOpenApiListClients(): Promise<{ ok: boolean; clients: import('./types').OmadaClientInfo[] }> {
+  return callable('omadaOpenApiListClients', {})
+}
+
+export async function omadaOpenApiSetClientBlocked(input: {
+  customerId?: string
+  mac?: string
+  blocked: boolean
+  trigger?: 'expiry' | 'payment' | 'manual' | 'test'
+  dryRun?: boolean
+}): Promise<{ ok: boolean; blocked: boolean; mac: string; method: string; dryRun: boolean }> {
+  return callable('omadaOpenApiSetClientBlocked', input)
+}
+
+export async function omadaOpenApiTestCustomer(customerId: string, testBlock = true): Promise<{
+  ok: boolean
+  customerId: string
+  customerName: string
+  mac: string
+  blockTest: { success: boolean; method: string; dryRun: boolean }
+  unblockTest: { success: boolean; method: string; dryRun: boolean }
+  configDryRun: boolean
+}> {
+  return callable('omadaOpenApiTestCustomer', { customerId, testBlock })
+}
+
+export async function saveOmadaCpeMac(customerId: string, mac: string): Promise<{ ok: boolean; customerId: string; mac: string }> {
+  return callable('saveOmadaCpeMac', { customerId, mac })
+}
+
+export async function omadaOpenApiGetActionLog(input?: { limit?: number; customerId?: string }): Promise<{ ok: boolean; logs: import('./types').OmadaActionLog[] }> {
+  return callable('omadaOpenApiGetActionLog', input ?? {})
+}
+
 export async function saveQboConfig(input: {
   clientId: string
   clientSecret?: string
@@ -1107,4 +1170,64 @@ export async function processExtensionRequest(input: {
   paidNow?: boolean
 }> {
   return callable('processExtensionRequest', input)
+}
+
+// Partial Payments & Balance
+
+export async function collectPayment(input: {
+  customerId: string
+  amountPaid: number
+  grantDays?: number
+  note?: string
+  locationId?: string
+  locationName?: string
+}): Promise<{
+  paidUntilMs: number
+  status: string
+  amountPaid: number
+  daysGranted: number
+  totalOwed: number
+  totalPaid: number
+  balanceOwed: number
+  planDue: number
+  extensionDue: number
+  balanceDue: number
+  planCollected: number
+  extensionCollected: number
+}> {
+  return callable('collectPayment', input)
+}
+
+export async function addCharge(input: {
+  customerId: string
+  amount: number
+  description?: string
+  chargeType?: 'plan' | 'extension'
+}): Promise<{
+  ok: boolean
+  totalOwed: number
+  balanceOwed: number
+  planDue: number
+  extensionDue: number
+  chargeType: string
+  amount: number
+  description: string
+}> {
+  return callable('addCharge', input)
+}
+
+export async function getBalanceSummary(customerId: string): Promise<{
+  customerId: string
+  totalOwed: number
+  totalPaid: number
+  balanceOwed: number
+  planDue: number
+  extensionDue: number
+  balanceDue: number
+  feeAmount: number
+  paidUntilMs: number | null
+  status: string
+  currency: string
+}> {
+  return callable('getBalanceSummary', { customerId })
 }

@@ -118,15 +118,35 @@ class HomeScreen extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  account.balanceDue > 0
-                      ? 'Amount due ${CustomerAccount.ec(account.balanceDue)}'
-                      : 'Nothing owed right now',
-                  style: TextStyle(
-                    color: account.balanceDue > 0 ? const Color(0xFFFBBF24) : Colors.white70,
-                    fontWeight: FontWeight.w600,
+                if (account.balanceOwed > 0) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFBBF24).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFBBF24).withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFFFBBF24), size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Amount owed to GlobalNetwork: ${CustomerAccount.ec(account.balanceOwed)}',
+                          style: const TextStyle(
+                            color: Color(0xFFFDE68A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ] else ...[
+                  Text(
+                    'Nothing owed right now',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontWeight: FontWeight.w600),
+                  ),
+                ],
               ],
             ),
           ),

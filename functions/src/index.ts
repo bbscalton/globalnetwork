@@ -4,6 +4,9 @@ export {
   createCustomer,
   extendSubscription,
   grantDayExtension,
+  collectPayment,
+  addCharge,
+  getBalanceSummary,
   suspendCustomer,
   linkCustomerAccount,
   heartbeat,
@@ -25,8 +28,19 @@ export {
   revokeDeskInvite,
 } from "./desk";
 export { expireSubscriptions, onChatCreated, onIssueCreated, onVoiceCallWritten } from "./notify";
-export { platformHealth, serverTime, adminSendTestFcm, adminGetStorageDump } from "./health";
+export { platformHealth, serverTime, checkAppVersion, adminSendTestFcm, adminGetStorageDump } from "./health";
 export { saveOmadaConfig, omadaEr7206Status, omadaEr7206ListClients, omadaEr7206SetClientBlocked, saveOmadaClientMap } from "./omadaEr7206";
+
+// Omada Open API (v5.13+ client_credentials OAuth)
+export {
+  saveOmadaOpenApiConfig,
+  omadaOpenApiStatus,
+  omadaOpenApiListClients,
+  omadaOpenApiSetClientBlocked,
+  omadaOpenApiTestCustomer,
+  saveOmadaCpeMac,
+  omadaOpenApiGetActionLog,
+} from "./omadaOpenApi";
 export { saveQboConfig, qboStatus, qboStartConnect, qboCompleteConnect, qboDisconnect } from "./quickbooks";
 export {
   saveOrgSettings,

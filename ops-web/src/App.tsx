@@ -17,6 +17,7 @@ import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
 import { DevicesDesk } from './DevicesDesk'
 import { OmadaDesk } from './OmadaDesk'
+import { NetworkDesk } from './NetworkDesk'
 import { SettingsDesk } from './SettingsDesk'
 import { OutletsDesk } from './OutletsDesk'
 import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
@@ -279,7 +280,8 @@ function Shell({
               Devices
               <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
             </NavLink>
-            <NavLink to="/er7206">Manage ER7206</NavLink>
+            <NavLink to="/network">Network</NavLink>
+            <NavLink to="/er7206">Legacy ER7206</NavLink>
             <NavLink to="/settings">Settings</NavLink>
           </>
         )}
@@ -319,6 +321,7 @@ function Shell({
           />
           <Route path="/outlets" element={<OutletsDesk />} />
           <Route path="/devices" element={owner ? <DevicesDesk /> : <Navigate to="/outlets" replace />} />
+          <Route path="/network" element={owner ? <NetworkDesk customers={customers} /> : <Navigate to="/outlets" replace />} />
           <Route path="/er7206" element={owner ? <OmadaDesk customers={customers} /> : <Navigate to="/outlets" replace />} />
           <Route path="/settings" element={owner ? <SettingsDesk org={org} customers={customers} /> : <Navigate to="/outlets" replace />} />
           <Route path="/accounts" element={<Navigate to={owner ? '/settings?tab=roles' : '/outlets'} replace />} />

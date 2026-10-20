@@ -266,7 +266,18 @@ export function CustomerPage({
             <span>Total</span>
             <strong>{repo.formatEc(customer.balanceDue)}</strong>
           </li>
+          {customer.balanceOwed > 0 && (
+            <li className="balance-owed">
+              <span>Balance owed</span>
+              <strong className="warn-text">{repo.formatEc(customer.balanceOwed)}</strong>
+            </li>
+          )}
         </ul>
+        {customer.balanceOwed > 0 && (
+          <p className="warn-text tiny" style={{ marginTop: '0.5rem' }}>
+            Outstanding balance: Customer owes {repo.formatEc(customer.balanceOwed)} from partial payments.
+          </p>
+        )}
       </div>
 
       {err && <p className="fail">{err}</p>}
@@ -484,6 +495,33 @@ export function CustomerPage({
             Collect plan
           </button>
         </div>
+      </section>
+
+      <section className="card action-card">
+        <div className="card-head">
+          <h2>Partial payment</h2>
+          {customer.balanceOwed > 0 && <span className="pill warn">Owes {repo.formatEc(customer.balanceOwed)}</span>}
+        </div>
+        <p className="muted tiny">
+          Accept partial payment and optionally grant days. The customer keeps a running balance that shows in their app.
+        </p>
+        <PartialPaymentForm
+          customer={customer}
+          disabled={busy}
+          onCollect={(amountPaid, grantDays, payNote) =>
+            void run(async () => {
+              const res = await repo.collectPayment({
+                customerId: customer.id,
+                amountPaid,
+                grantDays: grantDays > 0 ? grantDays : undefined,
+                note: payNote || undefined,
+                locationId: 'owner-desk',
+                locationName: 'Owner desk',
+              })
+              return `Collected ${repo.formatEc(res.amountPaid)}${res.daysGranted > 0 ? ` · granted ${res.daysGranted}d` : ''} · balance owed now ${repo.formatEc(res.balanceOwed)}`
+            })
+          }
+        />
       </section>
 
       <section className="card action-card">
@@ -939,6 +977,66 @@ export function CustomerPage({
             </article>
           ))}
         </section>
+      </div>
+    </div>
+  )
+}
+
+function PartialPaymentForm({
+  customer,
+  disabled,
+  onCollect,
+}: {
+  customer: Customer
+  disabled: boolean
+  onCollect: (amountPaid: number, grantDays: number, note: string) => void
+}) {
+  const [partialAmount, setPartialAmount] = useState('')
+  const [partialDays, setPartialDays] = useState('0')
+  const [partialNote, setPartialNote] = useState('')
+
+  const amountDue = customer.balanceOwed > 0 ? customer.balanceOwed : customer.balanceDue
+  const parsedAmount = Number(partialAmount) || 0
+  const parsedDays = Number(partialDays) || 0
+  const remaining = Math.max(0, amountDue - parsedAmount)
+
+  return (
+    <div className="form-row" style={{ marginTop: '0.75rem' }}>
+      <label>
+        Amount received (EC$)
+        <input
+          value={partialAmount}
+          onChange={(e) => setPartialAmount(e.target.value)}
+          placeholder={`Up to ${repo.formatEc(amountDue)}`}
+        />
+      </label>
+      <label>
+        Days to grant
+        <input value={partialDays} onChange={(e) => setPartialDays(e.target.value)} placeholder="0 = no days" />
+      </label>
+      <label>
+        Note
+        <input value={partialNote} onChange={(e) => setPartialNote(e.target.value)} placeholder="Partial payment…" />
+      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <button
+          className="btn btn-primary"
+          type="button"
+          disabled={disabled || parsedAmount <= 0}
+          onClick={() => {
+            onCollect(parsedAmount, parsedDays, partialNote)
+            setPartialAmount('')
+            setPartialDays('0')
+            setPartialNote('')
+          }}
+        >
+          Collect partial
+        </button>
+        <span className="muted tiny">
+          {parsedAmount > 0
+            ? `Due: ${repo.formatEc(amountDue)} · Paid: ${repo.formatEc(parsedAmount)} · Remaining: ${repo.formatEc(remaining)}`
+            : `Total due: ${repo.formatEc(amountDue)}`}
+        </span>
       </div>
     </div>
   )

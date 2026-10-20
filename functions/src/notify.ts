@@ -277,15 +277,30 @@ export const expireSubscriptions = onSchedule("every 5 minutes", async () => {
           );
         }
       }
-      if (autoBlock && next === "expired") {
-        const mac = String(doc.get("omadaClientMac") ?? doc.get("cpeMac") ?? "");
-        if (mac) {
-          try {
-            const { setOmadaClientBlockedInternal } = await import("./omadaEr7206");
-            await setOmadaClientBlockedInternal(mac, true);
+      if (next === "expired") {
+        // Try new Open API first, fall back to legacy web UI API
+        try {
+          const { blockCustomerCpeOnExpiry } = await import("./omadaOpenApi");
+          const result = await blockCustomerCpeOnExpiry(doc.id);
+          if (result.blocked || result.dryRun) {
             blocked += 1;
-          } catch (error) {
-            logger.warn("omada auto-block skipped", { customerId: doc.id, message: error instanceof Error ? error.message : String(error) });
+            logger.info("omada_cpe_blocked", { customerId: doc.id, mac: result.mac, dryRun: result.dryRun });
+          } else if (result.error && result.error !== "autoBlockOnExpire disabled" && result.error !== "no CPE MAC mapped") {
+            logger.warn("omada_cpe_block_failed", { customerId: doc.id, error: result.error });
+          }
+        } catch (error) {
+          // Fall back to legacy API if Open API not configured
+          if (autoBlock) {
+            const mac = String(doc.get("omadaClientMac") ?? doc.get("cpeMac") ?? "");
+            if (mac) {
+              try {
+                const { setOmadaClientBlockedInternal } = await import("./omadaEr7206");
+                await setOmadaClientBlockedInternal(mac, true);
+                blocked += 1;
+              } catch (legacyError) {
+                logger.warn("omada_legacy_block_skipped", { customerId: doc.id, message: legacyError instanceof Error ? legacyError.message : String(legacyError) });
+              }
+            }
           }
         }
       }

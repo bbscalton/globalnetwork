@@ -493,6 +493,12 @@ function PosShell({
                   <span>Total</span>
                   <strong>{formatEc(live.balanceDue)}</strong>
                 </li>
+                {live.balanceOwed > 0 && (
+                  <li className="highlight">
+                    <span>Balance owed</span>
+                    <strong className="warn">{formatEc(live.balanceOwed)}</strong>
+                  </li>
+                )}
                 <li>
                   <span>Plan fee</span>
                   <strong>{formatEc(live.feeAmount)}</strong>
@@ -502,6 +508,11 @@ function PosShell({
                   <strong>{fmtDate(live.paidUntilMs)}</strong>
                 </li>
               </ul>
+              {live.balanceOwed > 0 && (
+                <p className="warn-text tiny" style={{ marginTop: '0.5rem' }}>
+                  Customer has outstanding balance of {formatEc(live.balanceOwed)} from partial payments.
+                </p>
+              )}
             </article>
             <article className="till">
               <p className="currency">EC$</p>
