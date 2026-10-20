@@ -1,6 +1,6 @@
 import { onCall, onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { ownerFcmToken, requireOwner, sendToToken, db, CALLABLE } from "./context";
+import { ownerFcmToken, requireOwner, sendToToken, db, CALLABLE, ANTIGUA_TZ } from "./context";
 
 export const platformHealth = onRequest({ cors: true, invoker: "public", region: "us-central1" }, async (_req, res) => {
   const started = Date.now();
@@ -16,6 +16,19 @@ export const platformHealth = onRequest({ cors: true, invoker: "public", region:
     logger.error(e);
     res.status(500).json({ ok: false, message: e instanceof Error ? e.message : "health failed" });
   }
+});
+
+/**
+ * Server time endpoint for client clock skew correction.
+ * Returns server timestamp so clients can compute (serverTime - clientTime) offset.
+ */
+export const serverTime = onRequest({ cors: true, invoker: "public", region: "us-central1" }, async (_req, res) => {
+  const now = Date.now();
+  res.json({
+    serverTimeMs: now,
+    timezone: ANTIGUA_TZ,
+    isoUtc: new Date(now).toISOString(),
+  });
 });
 
 export const adminSendTestFcm = onCall(CALLABLE, async (request) => {

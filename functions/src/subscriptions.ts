@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, paidUntilAfterGrant, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
-import { customerByUid, customersWithEmail, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
+import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, formatAntiguaDate, paidUntilAfterGrant, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
+import { customerByUid, customersWithEmail, customersWithPhone, normalizeEmail, normalizePhone, pickCustomerKeeper } from "./customerRecords";
 
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
 const OWNER_DESK_OUTLET = { locationId: "owner-desk", locationName: "Owner desk" };
@@ -323,7 +323,7 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
   await sendToToken(
     customer.get("fcmToken") as string | undefined,
     "GlobalNetwork service updated",
-    `Your internet service is extended to ${new Date(result.paidUntilMs).toLocaleDateString()}.`,
+    `Your internet service is extended to ${formatAntiguaDate(result.paidUntilMs)}.`,
     { type: "subscription", customerId },
   );
 
@@ -425,8 +425,8 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
     customer.get("fcmToken") as string | undefined,
     "GlobalNetwork service updated",
     paidNow
-      ? `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${new Date(result.paidUntilMs).toLocaleDateString()}. EC$${charge} was collected.`
-      : `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${new Date(result.paidUntilMs).toLocaleDateString()}. EC$${charge} was added to your extension balance.`,
+      ? `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${formatAntiguaDate(result.paidUntilMs)}. EC$${charge} was collected.`
+      : `Your internet service is extended ${days} day${days === 1 ? "" : "s"} to ${formatAntiguaDate(result.paidUntilMs)}. EC$${charge} was added to your extension balance.`,
     { type: "subscription", customerId },
   );
 
@@ -460,11 +460,18 @@ export const linkCustomerAccount = onCall(CALLABLE, async (request) => {
       const keeper = pickCustomerKeeper(pool);
       const current = String(keeper.get("approvalStatus") ?? "");
       const patch: Record<string, unknown> = { uid, email, lastSeenMs: Date.now() };
+      // NEVER auto-approve on account linking. All new sign-ins must wait for owner approval.
+      // Only set approvalStatus if it's missing/empty, and always set to "pending" so owner must approve.
+      // Exception: if the record was already approved by an owner, keep it approved.
       if (!current) {
-        const createdBy = String(keeper.get("createdBy") ?? "");
-        const hasKyc = Boolean(keeper.get("idPhotoUrl") || keeper.get("kycSubmittedAtMs"));
-        patch.approvalStatus = createdBy === uid && !hasKyc ? "none" : "approved";
+        // Customer record has no approvalStatus - set to pending for owner review
+        patch.approvalStatus = "pending";
+        logger.info("linkCustomerAccount: setting pending approval for customer without status", {
+          customerId: keeper.id,
+          email,
+        });
       }
+      // If current is "approved", "pending", "rejected", or "none" - leave it as is
       await keeper.ref.update(patch);
       await Promise.all(
         pool
@@ -519,6 +526,255 @@ export const heartbeat = onCall(CALLABLE, async (request) => {
   }
   await ref.update({ lastSeenMs: Date.now(), fcmToken: request.data?.fcmToken ?? snap.get("fcmToken") ?? null });
   return { ok: true };
+});
+
+/**
+ * Customer requests a day extension from the app.
+ * Price is computed server-side at EC$6/day (DAY_EXTENSION_RATE_XCD).
+ * Creates an extension request for owner/POS approval.
+ * The expiry is set from server time in Antigua timezone.
+ */
+export const requestDayExtension = onCall(CALLABLE, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  
+  const customerId = String(request.data?.customerId ?? "").trim();
+  const days = Math.floor(Number(request.data?.days ?? 0));
+  
+  if (!customerId) {
+    throw new HttpsError("invalid-argument", "customerId is required.");
+  }
+  if (!Number.isFinite(days) || days < 1 || days > 90) {
+    throw new HttpsError("invalid-argument", "Days must be between 1 and 90.");
+  }
+  
+  const ref = db.collection("customers").doc(customerId);
+  const snap = await ref.get();
+  
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "Customer not found.");
+  }
+  if (snap.get("uid") !== uid) {
+    throw new HttpsError("permission-denied", "Not your customer record.");
+  }
+  
+  // Server-side price computation - never trust client price
+  const totalXcd = days * DAY_EXTENSION_RATE_XCD;
+  const now = Date.now();
+  
+  // Create extension request for owner/POS approval
+  const requestRef = await db.collection("extensionRequests").add({
+    customerId,
+    customerName: String(snap.get("name") ?? ""),
+    customerEmail: String(snap.get("email") ?? ""),
+    customerPhone: String(snap.get("phone") ?? ""),
+    uid,
+    days,
+    ratePerDay: DAY_EXTENSION_RATE_XCD,
+    totalXcd,
+    status: "pending",
+    requestedAtMs: now,
+    currentPaidUntilMs: Number(snap.get("paidUntilMs") ?? 0),
+    currentStatus: String(snap.get("status") ?? "expired"),
+  });
+  
+  // Notify owners
+  await sendToOwners(
+    "Extension request",
+    `${String(snap.get("name") ?? "A customer")} requested ${days} day${days === 1 ? "" : "s"} extension (EC$${totalXcd}).`,
+    { type: "extension_request", requestId: requestRef.id, customerId },
+  );
+  
+  // Update customer with pending request
+  await ref.update({
+    pendingExtensionRequestId: requestRef.id,
+    pendingExtensionDays: days,
+    pendingExtensionTotal: totalXcd,
+    lastSeenMs: now,
+  });
+  
+  logger.info("Extension request created", { requestId: requestRef.id, customerId, days, totalXcd });
+  
+  return {
+    ok: true,
+    requestId: requestRef.id,
+    days,
+    ratePerDay: DAY_EXTENSION_RATE_XCD,
+    totalXcd,
+    status: "pending",
+    message: `Your request for ${days} day${days === 1 ? "" : "s"} (EC$${totalXcd}) has been sent to GlobalNetwork. They will contact you about payment.`,
+  };
+});
+
+/**
+ * Owner/POS approves or rejects a customer extension request.
+ * On approval, grants the days and records payment if paidNow=true.
+ */
+export const processExtensionRequest = onCall(CALLABLE, async (request) => {
+  const staff = await requirePosStaff(request);
+  
+  const requestId = String(request.data?.requestId ?? "").trim();
+  const decision = String(request.data?.decision ?? "").trim().toLowerCase();
+  const paidNow = request.data?.paidNow === true;
+  const reason = String(request.data?.reason ?? "").trim();
+  const site = collectionSite(request.data, staff);
+  
+  if (!requestId || (decision !== "approved" && decision !== "rejected")) {
+    throw new HttpsError("invalid-argument", "requestId and decision (approved|rejected) are required.");
+  }
+  
+  const reqRef = db.collection("extensionRequests").doc(requestId);
+  const reqSnap = await reqRef.get();
+  
+  if (!reqSnap.exists) {
+    throw new HttpsError("not-found", "Extension request not found.");
+  }
+  
+  const status = String(reqSnap.get("status") ?? "");
+  if (status !== "pending") {
+    throw new HttpsError("failed-precondition", `Request already ${status}.`);
+  }
+  
+  const customerId = String(reqSnap.get("customerId") ?? "");
+  const days = Number(reqSnap.get("days") ?? 0);
+  const totalXcd = Number(reqSnap.get("totalXcd") ?? days * DAY_EXTENSION_RATE_XCD);
+  const now = Date.now();
+  
+  const customerRef = db.collection("customers").doc(customerId);
+  const customerSnap = await customerRef.get();
+  
+  if (!customerSnap.exists) {
+    throw new HttpsError("not-found", "Customer no longer exists.");
+  }
+  
+  if (decision === "rejected") {
+    await reqRef.update({
+      status: "rejected",
+      rejectedAtMs: now,
+      rejectedBy: staff.email,
+      rejectionReason: reason,
+    });
+    
+    await customerRef.update({
+      pendingExtensionRequestId: null,
+      pendingExtensionDays: null,
+      pendingExtensionTotal: null,
+    });
+    
+    await sendToToken(
+      customerSnap.get("fcmToken") as string | undefined,
+      "Extension request",
+      reason || "Your extension request was not approved. Please contact GlobalNetwork.",
+      { type: "extension_request", requestId, customerId },
+    );
+    
+    await writeAudit({
+      action: "extension_request_rejected",
+      adminEmail: staff.email,
+      targetUid: customerId,
+      detail: `${days}d EC$${totalXcd} - ${reason || "rejected"}`,
+    });
+    
+    return { ok: true, decision: "rejected" };
+  }
+  
+  // Approved - grant the extension
+  const prevUntil = Number(customerSnap.get("paidUntilMs") ?? 0);
+  const statusNow = String(customerSnap.get("status") ?? "expired");
+  const stillActive = (statusNow === "active" || statusNow === "grace") && prevUntil > now;
+  const paidUntilMs = paidUntilAfterGrant(prevUntil, days, now, stillActive);
+  
+  const prevPaid = Number(customerSnap.get("paidAmount") ?? 0);
+  const prevExtDue = Number(customerSnap.get("extensionDue") ?? 0);
+  const prevPlanDue = Number(customerSnap.get("planDue") ?? 0);
+  
+  const extensionDue = paidNow ? prevExtDue : prevExtDue + totalXcd;
+  const balanceDue = prevPlanDue + extensionDue;
+  
+  const customerPatch: Record<string, unknown> = {
+    paidUntilMs,
+    status: "grace",
+    graceUntilMs: paidUntilMs,
+    extensionDue,
+    balanceDue,
+    pendingExtensionRequestId: null,
+    pendingExtensionDays: null,
+    pendingExtensionTotal: null,
+    updatedAtMs: now,
+  };
+  
+  if (paidNow) {
+    customerPatch.paidAmount = prevPaid + totalXcd;
+    customerPatch.lastPaymentAmount = totalXcd;
+    customerPatch.lastPaymentMs = now;
+  }
+  
+  await customerRef.update(customerPatch);
+  
+  // Record payment
+  await customerRef.collection("payments").add({
+    amount: paidNow ? totalXcd : 0,
+    kind: "extension",
+    daysGranted: days,
+    balanceAdded: paidNow ? 0 : totalXcd,
+    note: `Customer-requested ${days}-day extension @ EC$${DAY_EXTENSION_RATE_XCD}/day`,
+    paidNow,
+    atMs: now,
+    byUid: staff.uid,
+    collectedByUid: staff.uid,
+    collectedByEmail: staff.email,
+    locationId: site.locationId,
+    locationName: site.locationName,
+    channel: site.locationId === OWNER_DESK_OUTLET.locationId ? "desk" : "pos",
+    fromExtensionRequest: requestId,
+  });
+  
+  await reqRef.update({
+    status: "approved",
+    approvedAtMs: now,
+    approvedBy: staff.email,
+    paidNow,
+    grantedPaidUntilMs: paidUntilMs,
+    processedAt: site.locationName,
+  });
+  
+  await sendToToken(
+    customerSnap.get("fcmToken") as string | undefined,
+    "Extension approved",
+    paidNow
+      ? `Your ${days}-day extension is active! Service valid until ${formatAntiguaDate(paidUntilMs)}. EC$${totalXcd} was collected.`
+      : `Your ${days}-day extension is active! Service valid until ${formatAntiguaDate(paidUntilMs)}. EC$${totalXcd} was added to your balance.`,
+    { type: "extension_request", requestId, customerId },
+  );
+  
+  await writeAudit({
+    action: "extension_request_approved",
+    adminEmail: staff.email,
+    targetUid: customerId,
+    detail: `${days}d EC$${totalXcd} ${paidNow ? "paid" : "charged"} until ${formatAntiguaDate(paidUntilMs)}`,
+  });
+  
+  return {
+    ok: true,
+    decision: "approved",
+    paidUntilMs,
+    days,
+    totalXcd,
+    paidNow,
+  };
+});
+
+/**
+ * Get the current extension rate for display in the customer app.
+ * Returns the rate so clients don't hardcode it.
+ */
+export const getExtensionRate = onCall(CALLABLE, async () => {
+  return {
+    ratePerDay: DAY_EXTENSION_RATE_XCD,
+    currency: CURRENCY,
+    minDays: 1,
+    maxDays: 90,
+  };
 });
 
 export const submitCustomerApplication = onCall(CALLABLE, async (request) => {
@@ -622,4 +878,133 @@ export const reviewCustomerApplication = onCall(CALLABLE, async (request) => {
     detail: reason || "approved",
   });
   return { ok: true, decision };
+});
+
+/**
+ * Request to link a customer account by phone number.
+ * This is a two-step process for security:
+ * 1. Customer calls requestPhoneLink with their phone number
+ * 2. Owner approves via approvePhoneLink
+ * 
+ * This prevents anyone from claiming another customer's account just by knowing their phone.
+ */
+export const requestPhoneLink = onCall(CALLABLE, async (request) => {
+  const uid = request.auth?.uid;
+  const claims = request.auth?.token as Record<string, unknown> | undefined;
+  const email = normalizeEmail(claims?.email);
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  
+  const phone = normalizePhone(request.data?.phone);
+  if (!phone || phone.length < 7) {
+    throw new HttpsError("invalid-argument", "Enter a valid phone number.");
+  }
+  
+  // Check if user already has a linked account
+  const existing = await customerByUid(uid);
+  if (existing) {
+    throw new HttpsError("already-exists", "You already have a linked account.");
+  }
+  
+  // Find customers with this phone
+  const matches = await customersWithPhone(phone);
+  if (matches.length === 0) {
+    throw new HttpsError("not-found", "No customer found with this phone number. Contact GlobalNetwork to create your account.");
+  }
+  
+  // Store the link request for owner approval
+  const target = pickCustomerKeeper(matches);
+  const now = Date.now();
+  await db.collection("phoneLinkRequests").doc(uid).set({
+    uid,
+    email: email || null,
+    phone,
+    targetCustomerId: target.id,
+    targetCustomerName: String(target.get("name") ?? ""),
+    status: "pending",
+    requestedAtMs: now,
+  });
+  
+  await sendToOwners(
+    "Phone link request",
+    `${email || "A user"} is requesting to link to customer ${String(target.get("name") ?? target.id)} by phone ${phone}.`,
+    { type: "phone_link", requestUid: uid },
+  );
+  
+  return { ok: true, status: "pending", message: "Link request sent to GlobalNetwork for approval." };
+});
+
+/**
+ * Owner approves or rejects a phone link request.
+ */
+export const approvePhoneLink = onCall(CALLABLE, async (request) => {
+  const owner = await requireOwner(request);
+  const requestUid = String(request.data?.uid ?? "").trim();
+  const decision = String(request.data?.decision ?? "").trim().toLowerCase();
+  const reason = String(request.data?.reason ?? "").trim();
+  
+  if (!requestUid || (decision !== "approved" && decision !== "rejected")) {
+    throw new HttpsError("invalid-argument", "uid and decision (approved|rejected) are required.");
+  }
+  
+  const reqRef = db.collection("phoneLinkRequests").doc(requestUid);
+  const reqSnap = await reqRef.get();
+  if (!reqSnap.exists) {
+    throw new HttpsError("not-found", "Phone link request not found.");
+  }
+  
+  const status = String(reqSnap.get("status") ?? "");
+  if (status !== "pending") {
+    throw new HttpsError("failed-precondition", `Request already ${status}.`);
+  }
+  
+  const now = Date.now();
+  
+  if (decision === "rejected") {
+    await reqRef.update({
+      status: "rejected",
+      rejectedAtMs: now,
+      rejectedBy: owner.email,
+      rejectionReason: reason,
+    });
+    await writeAudit({
+      action: "phone_link_rejected",
+      adminEmail: owner.email,
+      targetUid: requestUid,
+      detail: reason || "rejected",
+    });
+    return { ok: true, decision: "rejected" };
+  }
+  
+  // Approve: link the customer account
+  const targetCustomerId = String(reqSnap.get("targetCustomerId") ?? "");
+  const customerRef = db.collection("customers").doc(targetCustomerId);
+  const customerSnap = await customerRef.get();
+  
+  if (!customerSnap.exists) {
+    throw new HttpsError("not-found", "Target customer no longer exists.");
+  }
+  
+  await customerRef.update({
+    uid: requestUid,
+    linkedByPhone: true,
+    linkedAtMs: now,
+    approvalStatus: "approved",
+    approvedAtMs: now,
+    approvedBy: owner.email,
+  });
+  
+  await reqRef.update({
+    status: "approved",
+    approvedAtMs: now,
+    approvedBy: owner.email,
+  });
+  
+  await writeAudit({
+    action: "phone_link_approved",
+    adminEmail: owner.email,
+    targetUid: targetCustomerId,
+    detail: `linked uid=${requestUid}`,
+  });
+  
+  return { ok: true, decision: "approved", customerId: targetCustomerId };
 });

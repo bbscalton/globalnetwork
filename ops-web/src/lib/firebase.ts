@@ -91,6 +91,7 @@ export const COL = {
   calls: 'calls',
   iceOffer: 'iceOffer',
   iceAnswer: 'iceAnswer',
+  extensionRequests: 'extensionRequests',
 } as const
 
 export const ONLINE_AFTER_MS = 15 * 60 * 1000

@@ -608,7 +608,7 @@ function PosShell({
               </li>
               <li>
                 <span>Time</span>
-                <b>{new Date(receipt.atMs).toLocaleString()}</b>
+                <b>{new Date(receipt.atMs).toLocaleString('en-GB', { timeZone: 'America/Antigua', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</b>
               </li>
               <li>
                 <span>Collector</span>

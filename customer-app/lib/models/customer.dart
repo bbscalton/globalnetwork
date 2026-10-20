@@ -40,8 +40,9 @@ class CustomerAccount {
   final String locationLabel;
 
   bool get needsRegistration => approvalStatus == 'none' || approvalStatus == 'rejected';
-  bool get isPendingApproval => approvalStatus == 'pending';
-  bool get canUseApp => approvalStatus == 'approved' || approvalStatus.isEmpty;
+  bool get isPendingApproval => approvalStatus == 'pending' || approvalStatus.isEmpty;
+  // Only explicitly approved customers can use the app. Blank/empty status means pending owner review.
+  bool get canUseApp => approvalStatus == 'approved';
 
   int daysLeft() {
     final until = paidUntilMs;
@@ -267,6 +268,20 @@ class ChatLine {
         kind = 'voice';
       }
     }
+    // Handle serverTimestamp - may be a Timestamp or num for legacy/migrated data
+    int createdAtMs = 0;
+    final rawCreated = data['createdAtMs'];
+    if (rawCreated is int) {
+      createdAtMs = rawCreated;
+    } else if (rawCreated is num) {
+      createdAtMs = rawCreated.toInt();
+    } else if (rawCreated != null && rawCreated.runtimeType.toString().contains('Timestamp')) {
+      // Firestore Timestamp from serverTimestamp()
+      createdAtMs = (rawCreated as dynamic).millisecondsSinceEpoch as int;
+    } else {
+      // Fallback to clientCreatedAtMs for pending writes
+      createdAtMs = (data['clientCreatedAtMs'] as num?)?.toInt() ?? 0;
+    }
     return ChatLine(
       id: id,
       from: (data['from'] ?? 'owner') as String,
@@ -274,7 +289,7 @@ class ChatLine {
       kind: kind,
       mediaUrl: (mediaUrl == null || mediaUrl.isEmpty) ? null : mediaUrl,
       durationMs: (data['durationMs'] as num?)?.toInt() ?? 0,
-      createdAtMs: (data['createdAtMs'] as num?)?.toInt() ?? 0,
+      createdAtMs: createdAtMs,
       lat: (data['lat'] as num?)?.toDouble(),
       lng: (data['lng'] as num?)?.toDouble(),
     );

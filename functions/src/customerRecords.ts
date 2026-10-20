@@ -28,6 +28,24 @@ export async function customersWithEmail(email: string): Promise<QueryDocumentSn
   return snap.docs;
 }
 
+export function normalizePhone(value: unknown): string {
+  const raw = String(value ?? "").replace(/[^0-9+]/g, "");
+  if (!raw) return "";
+  // Remove leading + and normalize to digits only for comparison
+  return raw.replace(/^\+/, "").replace(/^1/, ""); // Remove country code 1 for US/Caribbean
+}
+
+export async function customersWithPhone(phone: string): Promise<QueryDocumentSnapshot[]> {
+  const normalized = normalizePhone(phone);
+  if (!normalized || normalized.length < 7) return [];
+  // Query by phone field - note: phones may be stored in various formats
+  const snap = await db.collection("customers").get();
+  return snap.docs.filter((doc) => {
+    const stored = normalizePhone(doc.get("phone"));
+    return stored && (stored === normalized || stored.endsWith(normalized) || normalized.endsWith(stored));
+  });
+}
+
 export async function customerByUid(uid: string): Promise<QueryDocumentSnapshot | null> {
   if (!uid) return null;
   const snap = await db.collection("customers").where("uid", "==", uid).limit(1).get();
