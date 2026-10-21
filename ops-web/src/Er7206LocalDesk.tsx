@@ -47,8 +47,6 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
   const [status, setStatus] = useState<LocalStatus | null>(null)
   const [users, setUsers] = useState<LocalUser[]>([])
   const [dryRun, setDryRun] = useState<DryRunSummary | null>(null)
-  const [connectorUrl, setConnectorUrl] = useState('')
-  const [connectorToken, setConnectorToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -79,12 +77,9 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
         unmatched_router: (r.unmatched_router as DryRunSummary['unmatched_router']) || [],
         counts: r.counts as Record<string, number> | undefined,
       })
-      try {
-        const listed = await repo.er7206LocalListUsers()
-        setUsers(listed.users ?? [])
-      } catch {
-        setUsers([])
-      }
+      // Router users come from the VPS sync (passwords stripped on the VPS); no direct connector call.
+      const pick = (arr: unknown) => (Array.isArray(arr) ? (arr as Array<{ user?: LocalUser }>).map((x) => x.user).filter(Boolean) : []) as LocalUser[]
+      setUsers([...pick(r.matched), ...pick(r.review), ...pick(r.unmatched_router)])
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
@@ -95,23 +90,6 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
   useEffect(() => {
     void refresh()
   }, [refresh])
-
-  const save = async () => {
-    setBusy(true)
-    setMsg(null)
-    setErr(null)
-    try {
-      await repo.saveEr7206LocalConfig({ connectorUrl, connectorToken: connectorToken || undefined })
-      setConnectorToken('')
-      setMsg('Saved connector URL. Testing…')
-      await refresh()
-      setMsg('Saved.')
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const setEnable = async (user: LocalUser, enable: boolean) => {
     const label = enable
@@ -178,17 +156,10 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
 
       <section className="card">
         <h2>Connector</h2>
-        <label>
-          Connector base URL (VPS, e.g. https://ops…/er7206-connector or http://127.0.0.1:3141 via tunnel)
-          <input value={connectorUrl} onChange={(e) => setConnectorUrl(e.target.value)} placeholder="https://…" />
-        </label>
-        <label>
-          Bearer token (optional; leave blank to keep saved)
-          <input value={connectorToken} onChange={(e) => setConnectorToken(e.target.value)} type="password" autoComplete="off" />
-        </label>
-        <button className="btn btn-primary" type="button" disabled={busy} onClick={() => void save()}>
-          Save &amp; test
-        </button>
+        <p className="muted tiny">
+          Status is published every 5 minutes by the VPS connector ({status?.connectorUrl || 'VPS'}). Router credentials stay on the VPS;
+          only “configured yes/no” is shown here.
+        </p>
         <ul className="flag-list">
           <li>
             <span>VPS connector online</span>
