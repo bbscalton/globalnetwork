@@ -21,6 +21,8 @@ type LocalStatus = {
   connectorUrl: string
   mode: string
   routerPassConfigured: boolean
+  routerLoginOk?: boolean
+  lastSyncMs?: number
   userCount: number
   error?: string
 }
@@ -28,6 +30,10 @@ type LocalStatus = {
 type ReviewRow = {
   reason: string
   user: LocalUser
+  strength?: string
+  routerExpiry?: string
+  routerPlan?: string | null
+  suggestedCustomer?: { id: string; name?: string; planName?: string; status?: string }
   candidates?: Array<{ id: string; name?: string }>
 }
 
@@ -52,25 +58,32 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
     setBusy(true)
     setErr(null)
     try {
-      const next = await repo.er7206LocalStatus()
-      setStatus(next)
-      setConnectorUrl(next.connectorUrl || '')
-      if (next.connected) {
+      const docs = await repo.er7206LocalConnectorDocs()
+      const s = docs.status || {}
+      const lastSyncMs = Number(s.lastSyncMs || 0)
+      const fresh = lastSyncMs > 0 && Date.now() - lastSyncMs < 15 * 60 * 1000
+      setStatus({
+        ok: true,
+        connected: !!s.connectorOnline && fresh,
+        connectorUrl: String(s.host || ''),
+        mode: String(s.mode || (docs.status ? 'unknown' : 'no status yet')),
+        routerPassConfigured: !!s.routerPassConfigured && !!s.routerUserConfigured,
+        routerLoginOk: !!s.routerLoginOk,
+        lastSyncMs,
+        userCount: Number(s.userCount || 0),
+        error: s.routerError ? String(s.routerError) : !fresh && docs.status ? 'Last VPS sync is older than 15 minutes' : undefined,
+      })
+      const r = docs.review || {}
+      setDryRun({
+        review: (r.review as ReviewRow[]) || [],
+        unmatched_router: (r.unmatched_router as DryRunSummary['unmatched_router']) || [],
+        counts: r.counts as Record<string, number> | undefined,
+      })
+      try {
         const listed = await repo.er7206LocalListUsers()
         setUsers(listed.users ?? [])
-        try {
-          const dr = await repo.er7206LocalDryRun()
-          setDryRun({
-            review: (dr.review as ReviewRow[]) || [],
-            unmatched_router: (dr.unmatched_router as DryRunSummary['unmatched_router']) || [],
-            counts: dr.counts as Record<string, number> | undefined,
-          })
-        } catch {
-          setDryRun(null)
-        }
-      } else {
+      } catch {
         setUsers([])
-        setDryRun(null)
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -143,8 +156,8 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
     }
   }
 
-  const reviewRows: Array<{ kind: string; reason: string; user: LocalUser }> = [
-    ...(dryRun?.review || []).map((r) => ({ kind: 'unsure', reason: r.reason, user: r.user })),
+  const reviewRows: Array<{ kind: string; reason: string; user: LocalUser; row?: ReviewRow }> = [
+    ...(dryRun?.review || []).map((r) => ({ kind: 'unsure', reason: r.reason, user: r.user, row: r })),
     ...(dryRun?.unmatched_router || []).map((r) => ({ kind: 'no_customer', reason: r.reason || 'no_match', user: r.user })),
   ]
 
@@ -178,7 +191,7 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
         </button>
         <ul className="flag-list">
           <li>
-            <span>Connected</span>
+            <span>VPS connector online</span>
             <span className={`pill ${status?.connected ? 'ok' : 'fail'}`}>{status?.connected ? 'Yes' : 'No'}</span>
           </li>
           <li>
@@ -186,10 +199,18 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
             <span className="pill warn">{status?.mode || '—'}</span>
           </li>
           <li>
-            <span>Router password on VPS</span>
+            <span>Router credentials on VPS</span>
             <span className={`pill ${status?.routerPassConfigured ? 'ok' : 'warn'}`}>
               {status?.routerPassConfigured ? 'Configured' : 'Missing'}
             </span>
+          </li>
+          <li>
+            <span>Router login (last sync)</span>
+            <span className={`pill ${status?.routerLoginOk ? 'ok' : 'fail'}`}>{status?.routerLoginOk ? 'OK' : 'Failed'}</span>
+          </li>
+          <li>
+            <span>Last sync</span>
+            <span className="pill">{status?.lastSyncMs ? new Date(status.lastSyncMs).toLocaleString() : '—'}</span>
           </li>
           <li>
             <span>Users</span>
@@ -216,6 +237,8 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
             <tr>
               <th>Router user</th>
               <th>Why here</th>
+              <th>Suggested customer</th>
+              <th>Router expiry / plan</th>
               <th>MAC / note</th>
               <th>Link to customer</th>
             </tr>
@@ -229,7 +252,16 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
                     <strong>{row.user.userName || '—'}</strong>
                     <div className="muted tiny">{row.kind === 'no_customer' ? 'No customer' : 'Unsure match'}</div>
                   </td>
-                  <td className="tiny">{row.reason}</td>
+                  <td className="tiny">
+                    {row.reason}
+                    {row.row?.strength === 'weak' ? <span className="pill warn"> weak</span> : null}
+                  </td>
+                  <td className="tiny">{row.row?.suggestedCustomer?.name || '—'}</td>
+                  <td className="tiny">
+                    {row.row?.routerExpiry || row.user.expireTime || '—'}
+                    <br />
+                    {row.row?.routerPlan || ''}
+                  </td>
                   <td className="tiny">
                     {row.user.macBindAddr || '—'}
                     <br />
