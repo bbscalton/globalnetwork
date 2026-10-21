@@ -1,4 +1,4 @@
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { CALLABLE, db, requireOwner, writeAudit } from "./context";
 
 const CONFIG_REF = db.collection("adminConfig").doc("er7206Local");
@@ -125,7 +125,26 @@ export const er7206LocalSetUserEnable = onCall(LOCAL_CALLABLE, async (request) =
 
 export const er7206LocalDryRun = onCall(LOCAL_CALLABLE, async (request) => {
   await requireOwner(request);
-  return connectorFetch("/dry-run");
+  const snap = await db.collection("adminConfig").doc("er7206LocalReview").get();
+  if (snap.exists) {
+    const data = snap.data() || {};
+    return {
+      ok: true,
+      source: "firestore",
+      review: data.review || [],
+      unmatched_router: data.unmatched_router || [],
+      matched: data.matched || [],
+      counts: data.counts || {},
+      updatedAtMs: data.updatedAtMs || null,
+      notes: data.notes || [],
+    };
+  }
+  try {
+    const live = await connectorFetch("/dry-run");
+    return { ...live, source: "connector" };
+  } catch {
+    return { ok: true, source: "empty", review: [], unmatched_router: [], matched: [], counts: {} };
+  }
 });
 
 /** Manual link only — never creates customers. Stores er7206UserName + cpeMac. */
@@ -157,3 +176,67 @@ export const er7206LocalLinkCustomer = onCall(LOCAL_CALLABLE, async (request) =>
   });
   return { ok: true };
 });
+
+
+const REVIEW_REF = db.collection("adminConfig").doc("er7206LocalReview");
+
+/** VPS connector ingest: review list + optional confident customer patches. Never creates customers. */
+export const er7206ConnectorIngest = onRequest(
+  { region: "us-central1", cors: true, invoker: "public", timeoutSeconds: 120 },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "POST only" });
+      return;
+    }
+    const cfg = await readConfig();
+    const token = cfg.connectorToken || "";
+    const auth = String(req.headers.authorization || "");
+    if (!token || auth !== `Bearer ${token}`) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const review = Array.isArray(body.review) ? body.review : [];
+    const unmatched = Array.isArray(body.unmatched_router) ? body.unmatched_router : [];
+    const matched = Array.isArray(body.matched) ? body.matched : [];
+    const counts = (body.counts && typeof body.counts === "object") ? body.counts : {};
+    const notes = Array.isArray(body.notes) ? body.notes : [];
+
+    await REVIEW_REF.set(
+      {
+        review,
+        unmatched_router: unmatched,
+        matched,
+        counts,
+        notes,
+        updatedAtMs: Date.now(),
+        source: "connector-timer",
+      },
+      { merge: false },
+    );
+
+    const applied: string[] = [];
+    const applyList = Array.isArray(body.apply) ? body.apply : [];
+    for (const item of applyList) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Record<string, unknown>;
+      const customerId = String(row.customerId || "").trim();
+      const patch = (row.patch && typeof row.patch === "object") ? (row.patch as Record<string, unknown>) : null;
+      if (!customerId || !patch) continue;
+      const ref = db.collection("customers").doc(customerId);
+      const snap = await ref.get();
+      if (!snap.exists) continue; // never create
+      const allowed: Record<string, unknown> = { updatedAtMs: Date.now() };
+      for (const k of ["paidUntilMs", "planName", "planDays", "feeAmount", "status", "er7206UserName", "cpeMac", "omadaClientMac"]) {
+        if (k in patch) allowed[k] = patch[k];
+      }
+      if (typeof allowed.paidUntilMs === "string" && /^\d+$/.test(allowed.paidUntilMs as string)) {
+        allowed.paidUntilMs = Number(allowed.paidUntilMs);
+      }
+      await ref.update(allowed);
+      applied.push(customerId);
+    }
+
+    res.json({ ok: true, review: review.length, unmatched: unmatched.length, applied: applied.length, appliedIds: applied });
+  },
+);
