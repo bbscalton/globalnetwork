@@ -49,7 +49,7 @@ export const saveEr7206LocalConfig = onCall(LOCAL_CALLABLE, async (request) => {
   const token = String(request.data?.connectorToken ?? "").trim();
   if (token) patch.connectorToken = token;
   await CONFIG_REF.set(patch, { merge: true });
-  await writeAudit({ action: "er7206_local_config_save", adminEmail: owner.email, detail: connectorUrl });
+  await writeAudit({ action: "er7206_local_config_save", adminEmail: owner.email, targetUid: "er7206Local", detail: connectorUrl });
   return { ok: true };
 });
 
@@ -117,6 +117,7 @@ export const er7206LocalSetUserEnable = onCall(LOCAL_CALLABLE, async (request) =
   await writeAudit({
     action: enable ? "er7206_local_unblock" : "er7206_local_block",
     adminEmail: owner.email,
+    targetUid: userName,
     detail: userName,
   });
   return data;
