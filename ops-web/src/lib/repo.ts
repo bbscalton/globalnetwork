@@ -1231,3 +1231,49 @@ export async function getBalanceSummary(customerId: string): Promise<{
 }> {
   return callable('getBalanceSummary', { customerId })
 }
+
+
+// ER7206 Luci local-users connector (VPS)
+export async function saveEr7206LocalConfig(input: {
+  connectorUrl: string
+  connectorToken?: string
+}): Promise<{ ok: boolean }> {
+  return callable('saveEr7206LocalConfig', input)
+}
+
+export async function er7206LocalStatus(): Promise<{
+  ok: boolean
+  connected: boolean
+  connectorUrl: string
+  mode: string
+  routerPassConfigured: boolean
+  userCount: number
+  error?: string
+}> {
+  return callable('er7206LocalStatus', {})
+}
+
+export async function er7206LocalListUsers(): Promise<{ ok: boolean; users: Array<Record<string, unknown>> }> {
+  return callable('er7206LocalListUsers', {})
+}
+
+export async function er7206LocalSetUserEnable(input: {
+  userName: string
+  key?: string
+  enable: boolean
+}): Promise<{ ok: boolean; error?: string }> {
+  return callable('er7206LocalSetUserEnable', input)
+}
+
+
+export async function er7206LocalDryRun(): Promise<Record<string, unknown>> {
+  return callable('er7206LocalDryRun', {})
+}
+
+export async function er7206LocalLinkCustomer(input: {
+  customerId: string
+  userName: string
+  mac?: string
+}): Promise<{ ok: boolean }> {
+  return callable('er7206LocalLinkCustomer', input)
+}
