@@ -1277,3 +1277,16 @@ export async function er7206LocalLinkCustomer(input: {
 }): Promise<{ ok: boolean }> {
   return callable('er7206LocalLinkCustomer', input)
 }
+
+/** Non-secret status + review published by the VPS connector (owner-readable adminConfig docs). */
+export async function er7206LocalConnectorDocs(): Promise<{
+  status: Record<string, unknown> | null
+  review: Record<string, unknown> | null
+}> {
+  const database = requireDb()
+  const [s, r] = await Promise.all([
+    getDoc(doc(database, 'adminConfig', 'er7206LocalStatus')),
+    getDoc(doc(database, 'adminConfig', 'er7206LocalReview')),
+  ])
+  return { status: s.exists() ? (s.data() as Record<string, unknown>) : null, review: r.exists() ? (r.data() as Record<string, unknown>) : null }
+}
