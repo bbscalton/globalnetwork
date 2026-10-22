@@ -22,13 +22,17 @@ Google sign-in on Android uses the Firebase Android app `gn.globalnetwork.global
 
 If you switch to a Play App Signing or a new upload key, add that SHA-1 (and SHA-256) in Firebase Console → Project settings → GlobalNetwork Customer.
 
-**Do not publish a GitHub Actions APK to R2.** CI runners use a different debug keystore (SHA-1 `6488…`), which breaks Google Sign-In with ApiException 10. Build on this machine and upload:
+**Publishing (since 2026-10-21): APKs are hosted on the VPS, not Cloudflare R2.** Live URL: https://dl.neuereatec.org/globalnetwork/app/android.apk (manifest: `/globalnetwork/app/manifest.json`).
+
+- CI: `build-customer-apps.yml` publishes the signed release APK automatically via `scripts/publish-apk.sh` when `ANDROID_UPLOAD_KEYSTORE_BASE64` and `APK_UPLOAD_TOKEN` secrets are set. Unsigned/debug CI builds are never published (Google Sign-In would fail with ApiException 10).
+- Manual (Windows):
 
 ```powershell
 cd customer-app
 flutter build apk --release --target-platform android-arm64
-cd ..\r2-worker
-npx wrangler r2 object put globalnetwork-media/orgs/globalnetwork/app/globalnetwork-customer.apk --file ..\customer-app\build\app\outputs\flutter-apk\app-release.apk --content-type application/vnd.android.package-archive --remote
+cd ..
+$env:APK_UPLOAD_TOKEN = '<token>'   # same value as the GitHub secret APK_UPLOAD_TOKEN
+.\scripts\publish-apk.ps1 -Slot android -File customer-app\build\app\outputs\flutter-apk\app-release.apk -Version 1.x.y
 ```
 
 ## Install

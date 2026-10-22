@@ -66,7 +66,7 @@ export const checkAppVersion = onRequest({ cors: true, invoker: "public", region
     updateMessage: updateRequired || updateAvailable ? (updateMessage || "A new version of GlobalNetwork is available.") : "",
     downloadUrl: platform === "ios" 
       ? "https://globalnetwork-media.neuereatec.workers.dev/app/ios.ipa"
-      : "https://globalnetwork-media.neuereatec.workers.dev/app/android.apk",
+      : "https://dl.neuereatec.org/globalnetwork/app/android.apk",
   });
 });
 
