@@ -33,6 +33,9 @@ export function CustomerPage({
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [routerUser, setRouterUser] = useState('')
+  const [routerPass, setRouterPass] = useState('')
+  const [routerMac, setRouterMac] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
@@ -489,6 +492,46 @@ export function CustomerPage({
             </button>
           )}
         </div>
+        <div className="router-link" style={{ marginTop: '0.75rem' }}>
+          {customer.er7206UserName ? (
+            <p className="muted tiny">
+              ER7206 router user: <strong>{customer.er7206UserName}</strong> · Suspend blocks it, Unsuspend / payments unblock it (VPS worker, ~30s).
+            </p>
+          ) : (
+            <form
+              className="form-row"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void run(async () => {
+                  const res = await repo.er7206CreateRouterUser({
+                    customerId: customer.id,
+                    userName: routerUser.trim(),
+                    password: routerPass,
+                    mac: routerMac.trim() || customer.cpeMac || '',
+                  })
+                  setRouterPass('')
+                  return `Router user queued (${res.routerJobId}). It appears on the ER7206 within ~30s.`
+                })
+              }}
+            >
+              <label>
+                Router username
+                <input value={routerUser} autoComplete="off" onChange={(e) => setRouterUser(e.target.value)} />
+              </label>
+              <label>
+                Router password
+                <input type="password" value={routerPass} autoComplete="new-password" onChange={(e) => setRouterPass(e.target.value)} />
+              </label>
+              <label>
+                CPE MAC (optional)
+                <input value={routerMac} placeholder={customer.cpeMac || 'AA-BB-CC-DD-EE-FF'} onChange={(e) => setRouterMac(e.target.value)} />
+              </label>
+              <button className="btn btn-ghost" type="submit" disabled={busy || !routerUser.trim() || routerPass.length < 4}>
+                Create on router
+              </button>
+            </form>
+          )}
+        </div>
         <div className="form-row" style={{ marginTop: '1rem' }}>
           <label>
             Days to extend
@@ -746,7 +789,7 @@ export function CustomerPage({
               Reconnect CPE
             </button>
           </div>
-          <p className="muted tiny">These buttons kick the house CPE off the AP. Account Suspend above only marks billing — it does not touch the ER7206 WAN.</p>
+          <p className="muted tiny">These buttons kick the house CPE off the AP. Account Suspend above blocks the linked ER7206 local user (it does not touch the ER7206 WAN).</p>
           {isOwner && (
           <button
             className="btn danger"

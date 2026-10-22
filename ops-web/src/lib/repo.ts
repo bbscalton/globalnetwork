@@ -78,6 +78,7 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     callRecording: data.callRecording === true,
     omadaClientMac: String(data.omadaClientMac ?? data.cpeMac ?? ''),
     cpeMac: String(data.cpeMac ?? data.omadaClientMac ?? ''),
+    er7206UserName: String(data.er7206UserName ?? ''),
   }
 }
 
@@ -369,7 +370,10 @@ export async function createCustomer(input: {
   email: string
   address: string
   planId: string
-}): Promise<{ customerId: string; existing?: boolean }> {
+  routerUserName?: string
+  routerPassword?: string
+  routerMac?: string
+}): Promise<{ customerId: string; existing?: boolean; routerJobId?: string | null; routerError?: string | null }> {
   return callable('createCustomer', { ...input, orgId: ORG_ID })
 }
 
@@ -1268,6 +1272,16 @@ export async function er7206LocalSetUserEnable(input: {
 
 export async function er7206LocalDryRun(): Promise<Record<string, unknown>> {
   return callable('er7206LocalDryRun', {})
+}
+
+/** Queue creation of a NEW ER7206 local user for this customer (VPS worker, ~30s). */
+export async function er7206CreateRouterUser(input: {
+  customerId: string
+  userName: string
+  password: string
+  mac?: string
+}): Promise<{ ok: boolean; routerJobId: string }> {
+  return callable('er7206CreateRouterUser', input)
 }
 
 export async function er7206LocalLinkCustomer(input: {
