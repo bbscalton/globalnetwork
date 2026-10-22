@@ -8,6 +8,7 @@ import { useAuth } from './lib/authContext'
 import { AuthImage } from './lib/AuthImage'
 import { customerPin, displayAddress, looksLikeCoordinates } from './lib/geo'
 import { DataUsagePanel } from './DataUsagePanel'
+import { runRouterCommand, useRouterLocks } from './lib/routerLock'
 
 export function CustomerPage({
   customers,
@@ -24,6 +25,7 @@ export function CustomerPage({
 }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const routerLocks = useRouterLocks()
   const { isOwner } = useAuth()
   const customer = customers.find((c) => c.id === id)
   const [payments, setPayments] = useState<Payment[]>([])
@@ -120,8 +122,35 @@ export function CustomerPage({
     }
   }
 
-  const extend = (useDays: number, paid: number, text: string) =>
-    run(async () => {
+  // Every button that makes the ER7206 change (block/unblock, suspend, payments/days that unblock,
+  // create user) shares one per-customer lock: locks immediately, unlocks when the queued
+  // er7206Queue job is done AND 30s passed (2-min fallback). Unlinked customers skip the lock.
+  const routerKey = `customer-router:${customer.id}`
+  const routerLinked = !!customer.er7206UserName
+  const routerLocked = routerLinked && routerLocks.locked(routerKey)
+  const routerAction = routerLocks.optimistic<string>(routerKey)
+  const routerBtn = (action: string, idle: string) =>
+    routerLocked && routerAction === action ? routerLocks.lockText(routerKey, idle) : idle
+  const runRouter = (action: string, work: () => Promise<{ msg: string; jobId?: string | null }>, force = false) => {
+    if (!routerLinked && !force) return run(async () => (await work()).msg)
+    if (routerLocked) return Promise.resolve()
+    return run(async () => {
+      let out = ''
+      await runRouterCommand(
+        routerKey,
+        async () => {
+          const r = await work()
+          out = r.msg
+          return r.jobId ?? null
+        },
+        { optimistic: action },
+      )
+      return out
+    })
+  }
+
+  const extend = (useDays: number, paid: number, text: string, action = 'extend') =>
+    runRouter(action, async () => {
       const res = await repo.extendSubscription({
         customerId: customer.id,
         days: useDays,
@@ -137,7 +166,7 @@ export function CustomerPage({
           : res.extensionDue > 0
             ? ` · extension still ${repo.formatEc(res.extensionDue)}`
             : ''
-      return `Plan collected · through ${fmtDate(res.paidUntilMs)} · total due ${repo.formatEc(res.balanceDue)}${extNote}`
+      return { msg: `Plan collected · through ${fmtDate(res.paidUntilMs)} · total due ${repo.formatEc(res.balanceDue)}${extNote}`, jobId: (res as { routerJobId?: string | null }).routerJobId }
     })
 
   const extendN = Math.floor(Number(extendDays))
@@ -145,7 +174,7 @@ export function CustomerPage({
     Number.isFinite(extendN) && extendN >= 1 ? extendN * repo.DAY_EXTENSION_RATE_XCD : null
 
   const grantExtension = (paidNow: boolean) =>
-    run(async () => {
+    runRouter(paidNow ? 'grant-paid' : 'grant', async () => {
       if (!Number.isFinite(extendN) || extendN < 1) throw new Error('Enter how many days to extend.')
       const res = await repo.grantDayExtension({
         customerId: customer.id,
@@ -157,9 +186,9 @@ export function CustomerPage({
       })
       setNote('')
       if (paidNow) {
-        return `Extended ${res.daysGranted}d · collected ${repo.formatEc(res.amountCollected || extendCharge || 0)} · plan due still ${repo.formatEc(res.planDue)} · through ${fmtDate(res.paidUntilMs)}`
+        return { msg: `Extended ${res.daysGranted}d · collected ${repo.formatEc(res.amountCollected || extendCharge || 0)} · plan due still ${repo.formatEc(res.planDue)} · through ${fmtDate(res.paidUntilMs)}` }
       }
-      return `Extended ${res.daysGranted}d · ${repo.formatEc(res.balanceAdded)} charged to extension · plan due ${repo.formatEc(res.planDue)} · total ${repo.formatEc(res.balanceDue)} · through ${fmtDate(res.paidUntilMs)}`
+      return { msg: `Extended ${res.daysGranted}d · ${repo.formatEc(res.balanceAdded)} charged to extension · plan due ${repo.formatEc(res.planDue)} · total ${repo.formatEc(res.balanceDue)} · through ${fmtDate(res.paidUntilMs)}` }
     })
 
   const send = async (e: FormEvent) => {
@@ -447,49 +476,49 @@ export function CustomerPage({
           <button
             className="btn btn-primary"
             type="button"
-            disabled={busy || needsPackage}
+            disabled={busy || needsPackage || routerLocked}
             title={needsPackage ? 'Assign a package first' : undefined}
             onClick={() =>
               void extend(
                 customer.planDays || 30,
                 customer.feeAmount + (customer.extensionDue > 0 ? customer.extensionDue : 0),
                 customer.extensionDue > 0 ? 'Full plan + extension due' : 'Full plan renewal',
+                'collect-full',
               )
             }
           >
-            Collect full {customer.planDays || 30}d · {repo.formatEc(customer.feeAmount)}
-            {customer.extensionDue > 0 ? ` + ext ${repo.formatEc(customer.extensionDue)}` : ''}
+            {routerBtn('collect-full', `Collect full ${customer.planDays || 30}d · ${repo.formatEc(customer.feeAmount)}${customer.extensionDue > 0 ? ` + ext ${repo.formatEc(customer.extensionDue)}` : ''}`)}
           </button>
           {customer.extensionDue > 0 && !needsPackage && (
             <button
               className="btn btn-ghost"
               type="button"
-              disabled={busy}
-              onClick={() => void extend(customer.planDays || 30, customer.feeAmount, 'Full plan renewal')}
+              disabled={busy || routerLocked}
+              onClick={() => void extend(customer.planDays || 30, customer.feeAmount, 'Full plan renewal', 'plan-only')}
             >
-              Plan only · {repo.formatEc(customer.feeAmount)}
+              {routerBtn('plan-only', `Plan only · ${repo.formatEc(customer.feeAmount)}`)}
             </button>
           )}
-          {customer.status === 'suspended' ? (
+          {(routerAction === 'suspend' ? true : routerAction === 'unsuspend' ? false : customer.status === 'suspended') ? (
             <button
               className="btn btn-ghost"
               type="button"
-              disabled={busy}
+              disabled={busy || routerLocked}
               onClick={() =>
-                void run(async () => {
+                void runRouter('unsuspend', async () => {
                   const res = await repo.unsuspendCustomer(customer.id)
-                  return `Unsuspended · ${res.status}`
+                  return { msg: `Unsuspended · ${res.status}`, jobId: (res as { routerJobId?: string | null }).routerJobId }
                 })
               }
             >
-              Unsuspend
+              {routerBtn('suspend', 'Unsuspend')}
             </button>
           ) : (
-            <button className="btn btn-ghost danger" type="button" disabled={busy} onClick={() => void run(async () => {
-              await repo.suspendCustomer(customer.id)
-              return 'Service suspended'
+            <button className="btn btn-ghost danger" type="button" disabled={busy || routerLocked} onClick={() => void runRouter('suspend', async () => {
+              const res = (await repo.suspendCustomer(customer.id)) as unknown as { routerJobId?: string | null } | undefined
+              return { msg: 'Service suspended', jobId: res?.routerJobId }
             })}>
-              Suspend
+              {routerBtn('unsuspend', 'Suspend')}
             </button>
           )}
         </div>
@@ -498,22 +527,29 @@ export function CustomerPage({
             <div className="muted tiny">
               ER7206 router user: <strong>{customer.er7206UserName}</strong> · Suspend blocks it, Unsuspend / payments unblock it (VPS worker, ~30s).
             <span className="form-row">
-              <button className="btn btn-ghost danger" type="button" disabled={busy} onClick={() => void run(async () => {
+              <button className="btn btn-ghost danger" type="button" disabled={busy || routerLocked} onClick={() => void runRouter('block', async () => {
                 const res = await repo.er7206LocalSetUserEnable({ customerId: customer.id, enable: false })
-                return `Router block queued (${res.routerJobId})`
-              })}>Block on router</button>
-              <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void run(async () => {
+                if (!res.ok) throw new Error(res.error || 'Router block failed')
+                return { msg: `Router block queued (${res.routerJobId})`, jobId: res.routerJobId }
+              })}>{routerBtn('block', 'Block on router')}</button>
+              <button className="btn btn-ghost" type="button" disabled={busy || routerLocked} onClick={() => void runRouter('unblock', async () => {
                 const res = await repo.er7206LocalSetUserEnable({ customerId: customer.id, enable: true })
-                return `Router unblock queued (${res.routerJobId})`
-              })}>Unblock on router</button>
+                if (!res.ok) throw new Error(res.error || 'Router unblock failed')
+                return { msg: `Router unblock queued (${res.routerJobId})`, jobId: res.routerJobId }
+              })}>{routerBtn('unblock', 'Unblock on router')}</button>
             </span>
+            {routerLocked && (routerAction === 'block' || routerAction === 'unblock') && (
+              <div className="tiny"><span className="pill warn">{routerAction === 'block' ? 'Blocking on router…' : 'Unblocking on router…'}</span></div>
+            )}
+            {routerLocks.note(routerKey) && <div className="tiny warn-text">{routerLocks.note(routerKey)}</div>}
             </div>
           ) : (
             <form
               className="form-row"
               onSubmit={(e) => {
                 e.preventDefault()
-                void run(async () => {
+                if (routerLocks.locked(routerKey)) return
+                void runRouter('create', async () => {
                   const res = await repo.er7206CreateRouterUser({
                     customerId: customer.id,
                     userName: routerUser.trim(),
@@ -521,8 +557,8 @@ export function CustomerPage({
                     mac: routerMac.trim() || customer.cpeMac || '',
                   })
                   setRouterPass('')
-                  return `Router user queued (${res.routerJobId}). It appears on the ER7206 within ~30s.`
-                })
+                  return { msg: `Router user queued (${res.routerJobId}). It appears on the ER7206 within ~30s.`, jobId: res.routerJobId }
+                }, true)
               }}
             >
               <label>
@@ -537,8 +573,8 @@ export function CustomerPage({
                 CPE MAC (optional)
                 <input value={routerMac} placeholder={customer.cpeMac || 'AA-BB-CC-DD-EE-FF'} onChange={(e) => setRouterMac(e.target.value)} />
               </label>
-              <button className="btn btn-ghost" type="submit" disabled={busy || !routerUser.trim() || routerPass.length < 4}>
-                Create on router
+              <button className="btn btn-ghost" type="submit" disabled={busy || routerLocks.locked(routerKey) || !routerUser.trim() || routerPass.length < 4}>
+                {routerLocks.locked(routerKey) ? routerLocks.lockText(routerKey, 'Create on router') : 'Create on router'}
               </button>
             </form>
           )}
@@ -554,18 +590,18 @@ export function CustomerPage({
           <button
             className="btn btn-ghost"
             type="button"
-            disabled={busy || extendCharge == null}
+            disabled={busy || extendCharge == null || routerLocked}
             onClick={() => void grantExtension(false)}
           >
-            Charge to balance
+            {routerBtn('grant', 'Charge to balance')}
           </button>
           <button
             className="btn btn-primary"
             type="button"
-            disabled={busy || extendCharge == null}
+            disabled={busy || extendCharge == null || routerLocked}
             onClick={() => void grantExtension(true)}
           >
-            Collect extension now
+            {routerBtn('grant-paid', 'Collect extension now')}
           </button>
         </div>
         <p className="muted tiny">
@@ -589,10 +625,10 @@ export function CustomerPage({
           <button
             className="btn btn-primary"
             type="button"
-            disabled={busy || needsPackage}
-            onClick={() => void extend(Number(days), Number(amount || 0), note)}
+            disabled={busy || needsPackage || routerLocked}
+            onClick={() => void extend(Number(days), Number(amount || 0), note, 'collect-plan')}
           >
-            Collect plan
+            {routerBtn('collect-plan', 'Collect plan')}
           </button>
         </div>
       </section>
@@ -607,9 +643,9 @@ export function CustomerPage({
         </p>
         <PartialPaymentForm
           customer={customer}
-          disabled={busy}
+          disabled={busy || routerLocked}
           onCollect={(amountPaid, grantDays, payNote) =>
-            void run(async () => {
+            void runRouter('partial', async () => {
               const res = await repo.collectPayment({
                 customerId: customer.id,
                 amountPaid,
@@ -618,7 +654,7 @@ export function CustomerPage({
                 locationId: 'owner-desk',
                 locationName: 'Owner desk',
               })
-              return `Collected ${repo.formatEc(res.amountPaid)}${res.daysGranted > 0 ? ` · granted ${res.daysGranted}d` : ''} · balance owed now ${repo.formatEc(res.balanceOwed)}`
+              return { msg: `Collected ${repo.formatEc(res.amountPaid)}${res.daysGranted > 0 ? ` · granted ${res.daysGranted}d` : ''} · balance owed now ${repo.formatEc(res.balanceOwed)}`, jobId: (res as { routerJobId?: string | null }).routerJobId }
             })
           }
         />
@@ -641,61 +677,61 @@ export function CustomerPage({
           <button
             className="btn btn-primary"
             type="button"
-            disabled={busy}
+            disabled={busy || routerLocked}
             onClick={() =>
-              void run(async () => {
+              void runRouter('adjust-apply', async () => {
                 const res = await repo.adjustSubscription({
                   customerId: customer.id,
                   daysRemaining: Number(remainDays),
                   note: adjustNote,
                 })
                 setAdjustNote('')
-                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+                return { msg: `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`, jobId: (res as { routerJobId?: string | null }).routerJobId }
               })
             }
           >
-            Apply
+            {routerBtn('adjust-apply', 'Apply')}
           </button>
         </div>
         <div className="quick-renew" style={{ marginTop: '0.75rem' }}>
           <button
             className="btn btn-ghost"
             type="button"
-            disabled={busy}
+            disabled={busy || routerLocked}
             onClick={() =>
-              void run(async () => {
+              void runRouter('add1', async () => {
                 const res = await repo.adjustSubscription({ customerId: customer.id, addDays: 1, note: adjustNote || '+1 day' })
-                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+                return { msg: `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`, jobId: (res as { routerJobId?: string | null }).routerJobId }
               })
             }
           >
-            +1 day
+            {routerBtn('add1', '+1 day')}
           </button>
           <button
             className="btn btn-ghost"
             type="button"
-            disabled={busy}
+            disabled={busy || routerLocked}
             onClick={() =>
-              void run(async () => {
+              void runRouter('add7', async () => {
                 const res = await repo.adjustSubscription({ customerId: customer.id, addDays: 7, note: adjustNote || '+7 days' })
-                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+                return { msg: `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`, jobId: (res as { routerJobId?: string | null }).routerJobId }
               })
             }
           >
-            +7 days
+            {routerBtn('add7', '+7 days')}
           </button>
           <button
             className="btn btn-ghost"
             type="button"
-            disabled={busy}
+            disabled={busy || routerLocked}
             onClick={() =>
-              void run(async () => {
+              void runRouter('sub1', async () => {
                 const res = await repo.adjustSubscription({ customerId: customer.id, addDays: -1, note: adjustNote || '−1 day' })
-                return `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`
+                return { msg: `Now ${res.daysRemaining} day${res.daysRemaining === 1 ? '' : 's'} left · ${res.status}`, jobId: (res as { routerJobId?: string | null }).routerJobId }
               })
             }
           >
-            −1 day
+            {routerBtn('sub1', '−1 day')}
           </button>
         </div>
       </section>

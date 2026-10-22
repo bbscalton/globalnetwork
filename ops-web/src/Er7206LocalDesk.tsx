@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Customer } from './lib/types'
 import * as repo from './lib/repo'
+import { runRouterCommand, useRouterLocks } from './lib/routerLock'
 
 type LocalUser = {
   userName?: string
@@ -51,6 +52,7 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [linkBusy, setLinkBusy] = useState<string | null>(null)
+  const locks = useRouterLocks()
 
   const refresh = useCallback(async () => {
     setBusy(true)
@@ -96,20 +98,25 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
       ? `Unblock / enable router user “${user.userName}”? Queues a router job: resets its GN-Blocked slot and sets enable=on (~30s).`
       : `Block / disable router user “${user.userName}”? Queues a router job: GN-Blocked slot, or enable=off if offline (~30s).`
     if (!window.confirm(label)) return
-    setBusy(true)
+    const lockKey = `er7206-enable:${user.userName || user.key || user['.name']}`
     setErr(null)
     try {
-      const result = await repo.er7206LocalSetUserEnable({
-        userName: user.userName || '',
-        key: user.key || user['.name'] || '',
-        enable,
-      })
-      setMsg(result.ok ? `${enable ? 'Unblock' : 'Block'} queued for ${user.userName} (job ${result.routerJobId}); router updates within ~30s` : result.error || 'failed')
-      await refresh()
+      await runRouterCommand(
+        lockKey,
+        async () => {
+          const result = await repo.er7206LocalSetUserEnable({
+            userName: user.userName || '',
+            key: user.key || user['.name'] || '',
+            enable,
+          })
+          if (!result.ok) throw new Error(result.error || 'failed')
+          setMsg(`${enable ? 'Unblock' : 'Block'} queued for ${user.userName} (job ${result.routerJobId}); router updates within ~30s`)
+          return result.routerJobId
+        },
+        { optimistic: enable ? 'on' : 'off', onDone: () => void refresh() },
+      )
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -291,7 +298,11 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
                   (c.cpeMac || c.omadaClientMac || '').replace(/[^a-fA-F0-9]/g, '').toLowerCase() ===
                   mac.replace(/[^a-fA-F0-9]/g, ''),
               )
-              const blocked = u.enable === 'off'
+              const lockKey = `er7206-enable:${u.userName || u.key || u['.name']}`
+              const shownEnable = locks.optimistic<string>(lockKey) ?? u.enable
+              const blocked = shownEnable === 'off'
+              const pending = locks.locked(lockKey)
+              const note = locks.note(lockKey)
               return (
                 <tr key={u.userName || u['.name']}>
                   <td>
@@ -305,7 +316,7 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
                   </td>
                   <td className="tiny">{u.expireTime || '—'}</td>
                   <td>
-                    <span className={`pill ${blocked ? 'fail' : 'ok'}`}>{u.enable || '—'}</span>
+                    <span className={`pill ${pending ? 'warn' : blocked ? 'fail' : 'ok'}`}>{shownEnable || '—'}{pending ? ' · applying' : ''}</span>
                   </td>
                   <td>
                     {hint ? (
@@ -318,14 +329,15 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
                   </td>
                   <td className="roster-actions">
                     {blocked ? (
-                      <button className="btn btn-tiny btn-primary" type="button" disabled={busy} onClick={() => void setEnable(u, true)}>
-                        Unblock
+                      <button className="btn btn-tiny btn-primary" type="button" disabled={busy || pending} aria-busy={pending} onClick={() => void setEnable(u, true)}>
+                        {locks.lockText(lockKey, 'Unblock')}
                       </button>
                     ) : (
-                      <button className="btn btn-tiny danger" type="button" disabled={busy} onClick={() => void setEnable(u, false)}>
-                        Block
+                      <button className="btn btn-tiny danger" type="button" disabled={busy || pending} aria-busy={pending} onClick={() => void setEnable(u, false)}>
+                        {locks.lockText(lockKey, 'Block')}
                       </button>
                     )}
+                    {note && <div className="tiny warn-text">{note}</div>}
                   </td>
                 </tr>
               )
