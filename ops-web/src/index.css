@@ -183,7 +183,7 @@ label textarea { min-height: 4.5rem; resize: vertical; }
   font-size: 0.82rem;
 }
 .chip.is-on { background: rgba(34, 211, 238, 0.2); border-color: rgba(34, 211, 238, 0.5); color: #fff; }
-.table-card { overflow: hidden; padding: 0; }
+.table-card { overflow-x: auto; padding: 0; }
 .roster { width: 100%; border-collapse: collapse; }
 .roster th, .roster td { text-align: left; padding: 0.85rem 1rem; border-bottom: 1px solid var(--line); }
 .roster tbody tr { cursor: pointer; }
