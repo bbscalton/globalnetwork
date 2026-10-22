@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatEc, usePublicPlans } from './usePublicPlans'
+import Story from './Story'
 
 const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
 const POS = (import.meta.env.VITE_POS_WEB_URL as string | undefined) || './pos/'
@@ -18,6 +19,7 @@ const DESK_APK = toVps(
 )
 
 const NAV = [
+  ['#story', 'The story'],
   ['#why', 'Why us'],
   ['#how', 'How it works'],
   ['#plans', 'Plans'],
@@ -126,9 +128,10 @@ export default function App() {
       <section id="top" className="hero">
         <div className="hero-media" style={{ backgroundImage: 'url(./hero-globe.png)' }} aria-hidden="true" />
         <div className="hero-grid" aria-hidden="true" />
+        <div className="starfield" aria-hidden="true"><i /><i /><i /></div>
         <div className="hero-scrim" aria-hidden="true" />
         <div className="hero-inner">
-          <div className="hero-copy">
+          <div className="hero-copy hero-rise">
             <p className="eyebrow eyebrow-on-dark">Internet · Antigua · billed in EC$ / XCD</p>
             <h1 className="hero-title">Antigua internet you can see, extend, and manage.</h1>
             <p className="hero-sub">
@@ -155,6 +158,15 @@ export default function App() {
           </div>
           <div className="globe-stage" aria-hidden="true">
             <div className="globe-aura gn-pulse" />
+            <div className="radar">
+              <span className="radar-sweep" />
+              <span className="radar-ring r1" />
+              <span className="radar-ring r2" />
+              <span className="radar-ring r3" />
+              <span className="radar-blip b1" />
+              <span className="radar-blip b2" />
+              <span className="radar-blip b3" />
+            </div>
             <div className="orbit orbit-a">
               <span className="gn-spin" />
             </div>
@@ -163,6 +175,16 @@ export default function App() {
             </div>
             <img className="globe-mark" src="./logo-gn.png" alt="" width={280} height={280} />
           </div>
+        </div>
+      </section>
+
+      <section id="story" className="section story-section">
+        <header className="section-head" data-reveal>
+          <p className="eyebrow">Picture this</p>
+          <h2>From the rooftop to your hand.</h2>
+        </header>
+        <div data-reveal>
+          <Story />
         </div>
       </section>
 
