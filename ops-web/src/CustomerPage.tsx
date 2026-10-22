@@ -494,9 +494,19 @@ export function CustomerPage({
         </div>
         <div className="router-link" style={{ marginTop: '0.75rem' }}>
           {customer.er7206UserName ? (
-            <p className="muted tiny">
+            <div className="muted tiny">
               ER7206 router user: <strong>{customer.er7206UserName}</strong> · Suspend blocks it, Unsuspend / payments unblock it (VPS worker, ~30s).
-            </p>
+            <span className="form-row">
+              <button className="btn btn-ghost danger" type="button" disabled={busy} onClick={() => void run(async () => {
+                const res = await repo.er7206LocalSetUserEnable({ customerId: customer.id, enable: false })
+                return `Router block queued (${res.routerJobId})`
+              })}>Block on router</button>
+              <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void run(async () => {
+                const res = await repo.er7206LocalSetUserEnable({ customerId: customer.id, enable: true })
+                return `Router unblock queued (${res.routerJobId})`
+              })}>Unblock on router</button>
+            </span>
+            </div>
           ) : (
             <form
               className="form-row"
@@ -759,37 +769,7 @@ export function CustomerPage({
               }}
             />
           </label>
-          <div className="form-row" style={{ marginTop: '0.75rem' }}>
-            <button
-              className="btn danger"
-              type="button"
-              disabled={busy || !(customer.omadaClientMac || customer.cpeMac)}
-              onClick={() => {
-                if (!window.confirm(`Disconnect CPE at this location? This kicks/blocks the house radio on the Omada AP. The ER7206 WAN stays up.`)) return
-                void run(async () => {
-                  const res = await repo.omadaEr7206SetClientBlocked({ customerId: customer.id, blocked: true })
-                  return `CPE disconnected (${res.mac}).`
-                })
-              }}
-            >
-              Disconnect CPE
-            </button>
-            <button
-              className="btn btn-primary"
-              type="button"
-              disabled={busy || !(customer.omadaClientMac || customer.cpeMac)}
-              onClick={() => {
-                if (!window.confirm('Reconnect CPE at this location? Unblock the wireless station and try Omada reconnect.')) return
-                void run(async () => {
-                  const res = await repo.omadaEr7206SetClientBlocked({ customerId: customer.id, blocked: false })
-                  return `CPE reconnected (${res.mac}${res.reconnectOk ? ', reconnect sent' : ''}).`
-                })
-              }}
-            >
-              Reconnect CPE
-            </button>
-          </div>
-          <p className="muted tiny">These buttons kick the house CPE off the AP. Account Suspend above blocks the linked ER7206 local user (it does not touch the ER7206 WAN).</p>
+          <p className="muted tiny">CPE MAC is used when creating the ER7206 router user. Router block/unblock is in the account section above.</p>
           {isOwner && (
           <button
             className="btn danger"

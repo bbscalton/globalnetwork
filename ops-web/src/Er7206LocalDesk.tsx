@@ -93,8 +93,8 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
 
   const setEnable = async (user: LocalUser, enable: boolean) => {
     const label = enable
-      ? `Unblock / enable router user “${user.userName}”? This toggles Luci enable=on (operator click only).`
-      : `Block / disable router user “${user.userName}”? This toggles Luci enable=off (operator click only).`
+      ? `Unblock / enable router user “${user.userName}”? Queues a router job: resets its GN-Blocked slot and sets enable=on (~30s).`
+      : `Block / disable router user “${user.userName}”? Queues a router job: GN-Blocked slot, or enable=off if offline (~30s).`
     if (!window.confirm(label)) return
     setBusy(true)
     setErr(null)
@@ -104,7 +104,7 @@ export function Er7206LocalDesk({ customers }: { customers: Customer[] }) {
         key: user.key || user['.name'] || '',
         enable,
       })
-      setMsg(result.ok ? `User ${user.userName} → enable=${enable ? 'on' : 'off'}` : result.error || 'failed')
+      setMsg(result.ok ? `${enable ? 'Unblock' : 'Block'} queued for ${user.userName} (job ${result.routerJobId}); router updates within ~30s` : result.error || 'failed')
       await refresh()
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))

@@ -1262,10 +1262,11 @@ export async function er7206LocalListUsers(): Promise<{ ok: boolean; users: Arra
 }
 
 export async function er7206LocalSetUserEnable(input: {
-  userName: string
+  userName?: string
+  customerId?: string
   key?: string
   enable: boolean
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; routerJobId?: string | null }> {
   return callable('er7206LocalSetUserEnable', input)
 }
 
