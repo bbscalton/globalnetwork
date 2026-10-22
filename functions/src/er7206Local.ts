@@ -1,6 +1,6 @@
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { CALLABLE, db, requireOwner, writeAudit } from "./context";
-import { enqueueEr7206Action, enqueueEr7206Create } from "./er7206Queue";
+import { enqueueEr7206Action, enqueueEr7206Create, enqueueEr7206Enable } from "./er7206Queue";
 
 const CONFIG_REF = db.collection("adminConfig").doc("er7206Local");
 const LOCAL_CALLABLE = { ...CALLABLE, timeoutSeconds: 60 as const };
@@ -104,26 +104,46 @@ export const er7206LocalListUsers = onCall(LOCAL_CALLABLE, async (request) => {
   return { ok: true, users: data.users || [] };
 });
 
-/** Operator click only. Connector refuses until ENABLE_WRITES=1. */
+/**
+ * Desk Block / Unblock (ER7206 page and customer page). Queues a router job for the VPS worker,
+ * same path as auto-expiry: block = GN-Blocked slot (fallback enable=off); unblock = reset slot + enable=on
+ * with expiry = desk paidUntil (never shortened; refused by the worker if not paid or suspended).
+ * Accepts userName (router user) or customerId; the router user must be linked to exactly one customer.
+ */
 export const er7206LocalSetUserEnable = onCall(LOCAL_CALLABLE, async (request) => {
   const owner = await requireOwner(request);
-  const userName = String(request.data?.userName ?? "").trim();
-  const key = String(request.data?.key ?? "").trim();
+  let userName = String(request.data?.userName ?? "").trim();
+  let customerId = String(request.data?.customerId ?? "").trim();
   const enable = !!request.data?.enable;
-  if (!userName) throw new HttpsError("invalid-argument", "userName required");
-  const data = await connectorFetch("/users/set-enable", {
-    method: "POST",
-    body: JSON.stringify({ userName, key, enable }),
-  });
+  if (!userName && !customerId) throw new HttpsError("invalid-argument", "userName or customerId required");
+  if (!customerId) {
+    const q = await db.collection("customers").where("er7206UserName", "==", userName).limit(2).get();
+    if (q.size !== 1) {
+      throw new HttpsError("failed-precondition", q.size ? `Router user ${userName} is linked to more than one customer` : `Link router user ${userName} to a customer first`);
+    }
+    customerId = q.docs[0].id;
+  }
+  const snap = await db.collection("customers").doc(customerId).get();
+  if (!snap.exists) throw new HttpsError("not-found", "Customer not found");
+  userName = String(snap.get("er7206UserName") ?? "").trim();
+  if (!userName) throw new HttpsError("failed-precondition", "Customer has no linked router user");
+  let jobId: string | null;
+  if (enable) {
+    const pu = Number(snap.get("paidUntilMs") ?? 0);
+    if (!(pu > Date.now())) throw new HttpsError("failed-precondition", "Desk shows no paid time; add days or take payment to unblock.");
+    if (String(snap.get("status") ?? "") === "suspended") throw new HttpsError("failed-precondition", "Customer is suspended; use Unsuspend.");
+    jobId = await enqueueEr7206Enable(customerId, 0, pu, "deskUnblock");
+  } else {
+    jobId = await enqueueEr7206Action(customerId, "block", "deskBlock");
+  }
   await writeAudit({
     action: enable ? "er7206_local_unblock" : "er7206_local_block",
     adminEmail: owner.email,
-    targetUid: userName,
+    targetUid: customerId,
     detail: userName,
   });
-  return data;
+  return { ok: !!jobId, queued: true, routerJobId: jobId, userName };
 });
-
 
 export const er7206LocalDryRun = onCall(LOCAL_CALLABLE, async (request) => {
   await requireOwner(request);
@@ -159,6 +179,23 @@ export const er7206LocalLinkCustomer = onCall(LOCAL_CALLABLE, async (request) =>
   const ref = db.collection("customers").doc(customerId);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "Customer not found");
+  // Must be an existing router user from the latest VPS sync (adminConfig/er7206LocalReview).
+  const review = (await db.collection("adminConfig").doc("er7206LocalReview").get()).data() || {};
+  const known = new Set<string>();
+  for (const key of ["review", "unmatched_router", "matched"]) {
+    for (const row of (Array.isArray(review[key]) ? review[key] : []) as Array<Record<string, any>>) {
+      for (const n of [row?.routerUserName, row?.user?.userName, row?.user?.[".name"]]) {
+        if (typeof n === "string" && n.trim()) known.add(n.trim());
+      }
+    }
+  }
+  if (!known.has(userName)) {
+    throw new HttpsError("failed-precondition", `Router user "${userName}" is not on the ER7206 (latest sync has ${known.size} users). Pick one from the list.`);
+  }
+  const taken = await db.collection("customers").where("er7206UserName", "==", userName).limit(2).get();
+  if (taken.docs.some((d) => d.id !== customerId)) {
+    throw new HttpsError("failed-precondition", `Router user "${userName}" is already linked to another customer.`);
+  }
   const patch: Record<string, unknown> = {
     er7206UserName: userName,
     updatedAtMs: Date.now(),
