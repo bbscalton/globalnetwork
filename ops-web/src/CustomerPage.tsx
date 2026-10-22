@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import type { ChatMessage, Customer, IssueTicket, Payment, Plan } from './lib/types'
+import type { ChatMessage, Customer, ExtensionRequest, IssueTicket, Payment, Plan } from './lib/types'
 import * as repo from './lib/repo'
 import { ChatBubbleBody } from './ChatMedia'
 import { cyclePct, fmtDate, fmtWhen, initials, remainingLabel, statusTone } from './lib/desk'
@@ -13,11 +13,13 @@ export function CustomerPage({
   plans,
   issues,
   now,
+  pendingExtensions = [],
 }: {
   customers: Customer[]
   plans: Plan[]
   issues: IssueTicket[]
   now: number
+  pendingExtensions?: ExtensionRequest[]
 }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -282,6 +284,47 @@ export function CustomerPage({
 
       {err && <p className="fail">{err}</p>}
       {msg && <p className="ok-text">{msg}</p>}
+
+      {pendingExtensions.filter((r) => r.customerId === customer.id).map((r) => (
+        <section key={r.id} className="card action-card">
+          <div className="card-head">
+            <h2>Extension request</h2>
+            <span className="pill warn">Pending</span>
+          </div>
+          <p>
+            Requested <strong>{r.days} day{r.days === 1 ? '' : 's'}</strong> ({repo.formatEc(r.totalXcd)}) on {fmtWhen(r.requestedAtMs)}.
+          </p>
+          <div className="row-actions">
+            {([
+              ['Approve · paid now', 'approved', true],
+              ['Approve · add to balance', 'approved', false],
+              ['Decline', 'rejected', false],
+            ] as const).map(([label, decision, paidNow]) => (
+              <button
+                key={label}
+                className={decision === 'rejected' ? 'btn btn-ghost' : 'btn btn-primary'}
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true)
+                  setErr(null)
+                  setMsg(null)
+                  try {
+                    await repo.processExtensionRequest({ requestId: r.id, decision, paidNow })
+                    setMsg(decision === 'approved' ? `Extension of ${r.days} days approved.` : 'Extension request declined.')
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : 'Could not process request')
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
 
       <section className={`card action-card${needsPackage ? ' package-needed' : ''}`}>
         <div className="card-head">
