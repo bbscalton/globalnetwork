@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/customer.dart';
 import '../theme.dart';
+import 'my_usage_card.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
@@ -150,6 +151,7 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
+          MyUsageCard(customerId: account.id),
           const SizedBox(height: 16),
           Text(account.serviceDetail, style: const TextStyle(height: 1.45, fontSize: 15)),
           if (_showExtendButton) ...[

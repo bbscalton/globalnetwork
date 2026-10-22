@@ -76,6 +76,11 @@ service cloud.firestore {
     }
 
     // Desk -> ER7206 router jobs: written by Cloud Functions (Admin SDK) and the VPS connector only.
+    // Desk Data column: collection-group read of customers/*/usage (staff only).
+    match /{path=**}/usage/{docId} {
+      allow read: if isPosStaff();
+    }
+
     match /er7206Queue/{jobId} {
       allow read: if isOwner();
       allow write: if false;
@@ -112,6 +117,12 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSeenMs', 'fcmToken', 'uid'])
           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approvalStatus']));
       allow delete: if isOwner();
+
+      // Data usage from the ER7206 IP statistics (VPS connector, Admin SDK only).
+      match /usage/{docId} {
+        allow read: if isPosStaff() || customerOwns(customerId);
+        allow write: if false;
+      }
 
       match /payments/{payId} {
         allow read: if isPosStaff() || customerOwns(customerId);

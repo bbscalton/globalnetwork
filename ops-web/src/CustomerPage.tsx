@@ -7,6 +7,7 @@ import { cyclePct, fmtDate, fmtWhen, initials, remainingLabel, statusTone } from
 import { useAuth } from './lib/authContext'
 import { AuthImage } from './lib/AuthImage'
 import { customerPin, displayAddress, looksLikeCoordinates } from './lib/geo'
+import { DataUsagePanel } from './DataUsagePanel'
 
 export function CustomerPage({
   customers,
@@ -541,6 +542,9 @@ export function CustomerPage({
               </button>
             </form>
           )}
+        </div>
+        <div className="card" style={{ marginTop: '0.75rem', padding: '0.9rem' }}>
+          <DataUsagePanel customer={customer} isOwner={isOwner} />
         </div>
         <div className="form-row" style={{ marginTop: '1rem' }}>
           <label>
