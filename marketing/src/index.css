@@ -721,3 +721,9 @@ ul, ol { margin: 0; padding: 0; }
   .glass-card:hover, .glass-card[data-reveal].is-visible:hover { transform: none; }
   .story-frame { transition: none; }
 }
+@media (max-width: 760px) {
+  .nav { padding-inline: 1rem; }
+  .nav-ctas { flex-wrap: nowrap; }
+  .brand { font-size: 1.05rem; }
+}
+@media (max-width: 440px) { .brand { font-size: 0; gap: 0; } .nav-ctas .btn { padding: 0.55rem 0.8rem; } }

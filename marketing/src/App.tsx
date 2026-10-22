@@ -83,7 +83,7 @@ export default function App() {
       </a>
 
       <header className="nav">
-        <a className="brand" href="#top" onClick={closeMenu}>
+        <a className="brand" href="#top" onClick={closeMenu} aria-label="GlobalNetwork home">
           <img src="./logo-gn.png" alt="" width={36} height={36} />
           GlobalNetwork
         </a>
