@@ -6,7 +6,7 @@ import * as repo from './lib/repo'
 import { completeQboOAuthIfPresent, readQboOAuthCallback } from './lib/qboOAuth'
 import { ONLINE_AFTER_MS } from './lib/firebase'
 import { deskPulse } from './lib/desk'
-import type { Customer, IssueTicket, OrgSettings, Plan } from './lib/types'
+import type { Customer, ExtensionRequest, IssueTicket, OrgSettings, Plan } from './lib/types'
 import { DEFAULT_ORG_SETTINGS } from './lib/types'
 import { Board } from './Board'
 import { CustomerPage } from './CustomerPage'
@@ -195,6 +195,7 @@ function Shell({
   const [customers, setCustomers] = useState<Customer[]>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [issues, setIssues] = useState<IssueTicket[]>([])
+  const [extRequests, setExtRequests] = useState<ExtensionRequest[]>([])
   const [org, setOrg] = useState<OrgSettings | null>(null)
   const [now, setNow] = useState(Date.now())
   const [error, setError] = useState<string | null>(null)
@@ -212,7 +213,9 @@ function Shell({
     const u2 = repo.observePlans(setPlans, (e) => setError(e.message))
     const u3 = repo.observeIssues(setIssues)
     const u4 = repo.observeOrg(orgId, setOrg)
+    const u5 = repo.observeExtensionRequests(setExtRequests, (e) => console.warn('extensionRequests', e.message))
     return () => {
+      u5()
       u1()
       u2()
       u3()
@@ -238,6 +241,7 @@ function Shell({
     }
   }, [owner, navigate])
 
+  const pendingExt = useMemo(() => extRequests.filter((r) => r.status === 'pending'), [extRequests])
   const pulse = useMemo(
     () => deskPulse(customers, issues, now, ONLINE_AFTER_MS, warnDays),
     [customers, issues, now, warnDays],
@@ -311,9 +315,9 @@ function Shell({
         <Routes>
           <Route
             path="/"
-            element={<Board customers={customers} plans={plans} issues={issues} now={now} renewalWarnDays={warnDays} />}
+            element={<Board customers={customers} plans={plans} issues={issues} now={now} renewalWarnDays={warnDays} pendingExtensions={pendingExt} />}
           />
-          <Route path="/c/:id" element={<CustomerPage customers={customers} plans={plans} issues={issues} now={now} />} />
+          <Route path="/c/:id" element={<CustomerPage customers={customers} plans={plans} issues={issues} now={now} pendingExtensions={pendingExt} />} />
           <Route path="/chat" element={<ChatDesk customers={customers} issues={issues} botEnabled={botEnabled} />} />
           <Route path="/issues" element={<IssuesDesk issues={issues} />} />
           <Route path="/field" element={<FieldMap customers={customers} issues={issues} />} />

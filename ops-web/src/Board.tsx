@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Customer, CustomerStatus, IssueTicket, Plan } from './lib/types'
+import type { Customer, CustomerStatus, ExtensionRequest, IssueTicket, Plan } from './lib/types'
 import * as repo from './lib/repo'
 import { cyclePct, deskPulse, fmtDate, initials, remainingShort, statusTone } from './lib/desk'
 import { ONLINE_AFTER_MS } from './lib/firebase'
@@ -13,12 +13,14 @@ export function Board({
   issues,
   now,
   renewalWarnDays = 3,
+  pendingExtensions = [],
 }: {
   customers: Customer[]
   plans: Plan[]
   issues: IssueTicket[]
   now: number
   renewalWarnDays?: number
+  pendingExtensions?: ExtensionRequest[]
 }) {
   const navigate = useNavigate()
   const pulse = useMemo(
@@ -167,6 +169,25 @@ export function Board({
           <span className="muted">{pulse.offline.length} active without a recent heartbeat</span>
         </button>
       </section>
+
+      {pendingExtensions.length > 0 && (
+        <section className="card action-card" aria-label="Extension requests">
+          <div className="card-head">
+            <h2>Extension requests</h2>
+            <span className="pill warn">{pendingExtensions.length} pending</span>
+          </div>
+          <ul className="plain-list">
+            {pendingExtensions.map((r) => (
+              <li key={r.id}>
+                <button className="btn btn-ghost" type="button" onClick={() => navigate(`/c/${r.customerId}`)}>
+                  <strong>{r.customerName || r.customerPhone || r.customerId}</strong> · {r.days} day{r.days === 1 ? '' : 's'} ·{' '}
+                  {repo.formatEc(r.totalXcd)} · requested {fmtDate(r.requestedAtMs)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="desk-toolbar">
         <input className="search" placeholder="Search name, phone, email, address, plan…" value={q} onChange={(e) => setQ(e.target.value)} />
