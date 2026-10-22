@@ -23,6 +23,7 @@ import {
   writeAudit,
 } from "./context";
 import { absorbCustomer, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
+import { enqueueEr7206Enable } from "./er7206Queue";
 
 export const DEFAULT_ORG_SETTINGS = {
   name: "GlobalNetwork",
@@ -309,10 +310,12 @@ export const adjustSubscription = onCall(CALLABLE, async (request) => {
 
   const ref = db.collection("customers").doc(customerId);
   const now = Date.now();
+  let prevUntilForQueue = 0;
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
+    prevUntilForQueue = prevUntil;
     const currentStatus = String(snap.get("status") ?? "expired");
     let paidUntilMs: number | null = prevUntil > 0 ? prevUntil : null;
 
@@ -379,6 +382,7 @@ export const adjustSubscription = onCall(CALLABLE, async (request) => {
     targetUid: customerId,
     detail: `left=${result.daysRemaining} status=${result.status} note=${note}`,
   });
+  await enqueueEr7206Enable(customerId, prevUntilForQueue, result.paidUntilMs, "adjustSubscription");
 
   const customer = await ref.get();
   const left = result.daysRemaining;

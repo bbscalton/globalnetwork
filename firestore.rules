@@ -75,6 +75,12 @@ service cloud.firestore {
       allow read, write: if isOwner() && doc != 'omadaEr7206' && doc != 'quickbooksOnline';
     }
 
+    // Desk -> ER7206 router jobs: written by Cloud Functions (Admin SDK) and the VPS connector only.
+    match /er7206Queue/{jobId} {
+      allow read: if isOwner();
+      allow write: if false;
+    }
+
     match /adminAuditLogs/{id} {
       allow read, create: if isOwner();
       allow update, delete: if false;
