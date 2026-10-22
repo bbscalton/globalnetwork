@@ -1,5 +1,6 @@
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { CALLABLE, db, requireOwner, writeAudit } from "./context";
+import { enqueueEr7206Action, enqueueEr7206Create } from "./er7206Queue";
 
 const CONFIG_REF = db.collection("adminConfig").doc("er7206Local");
 const LOCAL_CALLABLE = { ...CALLABLE, timeoutSeconds: 60 as const };
@@ -168,6 +169,7 @@ export const er7206LocalLinkCustomer = onCall(LOCAL_CALLABLE, async (request) =>
     patch.cpeMac = pretty;
     patch.omadaClientMac = pretty;
   }
+  const prevUser = String(snap.get("er7206UserName") ?? "").trim();
   await ref.update(patch);
   await writeAudit({
     action: "er7206_local_link",
@@ -175,7 +177,31 @@ export const er7206LocalLinkCustomer = onCall(LOCAL_CALLABLE, async (request) =>
     targetUid: customerId,
     detail: userName,
   });
-  return { ok: true };
+  // Push desk state to the router: enable if paid, block if expired/suspended.
+  const routerJobId = prevUser !== userName ? await enqueueEr7206Action(customerId, "sync", "er7206LocalLinkCustomer") : null;
+  return { ok: true, routerJobId };
+});
+
+/** Create a NEW router local user for an existing customer (queued to the VPS worker). Owner only. */
+export const er7206CreateRouterUser = onCall(LOCAL_CALLABLE, async (request) => {
+  const owner = await requireOwner(request);
+  const customerId = String(request.data?.customerId ?? "").trim();
+  const userName = String(request.data?.userName ?? "").trim();
+  if (!customerId || !userName) throw new HttpsError("invalid-argument", "customerId and userName required");
+  let jobId: string;
+  try {
+    jobId = await enqueueEr7206Create({
+      customerId,
+      username: userName,
+      password: String(request.data?.password ?? ""),
+      mac: String(request.data?.mac ?? ""),
+      source: "er7206CreateRouterUser",
+    });
+  } catch (e) {
+    throw new HttpsError("failed-precondition", e instanceof Error ? e.message : String(e));
+  }
+  await writeAudit({ action: "er7206_create_user", adminEmail: owner.email, targetUid: customerId, detail: userName });
+  return { ok: true, routerJobId: jobId };
 });
 
 

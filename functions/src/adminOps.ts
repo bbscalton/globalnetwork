@@ -23,7 +23,7 @@ import {
   writeAudit,
 } from "./context";
 import { absorbCustomer, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
-import { enqueueEr7206Enable } from "./er7206Queue";
+import { enqueueEr7206Action, enqueueEr7206Enable } from "./er7206Queue";
 
 export const DEFAULT_ORG_SETTINGS = {
   name: "GlobalNetwork",
@@ -382,7 +382,11 @@ export const adjustSubscription = onCall(CALLABLE, async (request) => {
     targetUid: customerId,
     detail: `left=${result.daysRemaining} status=${result.status} note=${note}`,
   });
-  await enqueueEr7206Enable(customerId, prevUntilForQueue, result.paidUntilMs, "adjustSubscription");
+  if (result.status === "suspended") {
+    await enqueueEr7206Action(customerId, "block", "adjustSubscription");
+  } else {
+    await enqueueEr7206Enable(customerId, prevUntilForQueue, result.paidUntilMs, "adjustSubscription");
+  }
 
   const customer = await ref.get();
   const left = result.daysRemaining;
@@ -410,6 +414,10 @@ export const unsuspendCustomer = onCall(CALLABLE, async (request) => {
   const status = statusFromTimestamps(paidUntilMs, graceUntilMs, now);
   await ref.update({ status, updatedAtMs: now, updatedBy: owner.email });
   await writeAudit({ action: "unsuspend_customer", adminEmail: owner.email, targetUid: customerId, detail: status });
+  // Unblock on the router only while the desk still shows paid time (worker re-checks; never shortens expiry).
+  if (status !== "expired" && paidUntilMs > now) {
+    await enqueueEr7206Enable(customerId, 0, paidUntilMs, "unsuspendCustomer");
+  }
   await sendToToken(
     snap.get("fcmToken") as string | undefined,
     "GlobalNetwork service updated",

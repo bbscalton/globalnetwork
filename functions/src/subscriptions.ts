@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, formatAntiguaDate, paidUntilAfterGrant, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
-import { enqueueEr7206Enable } from "./er7206Queue";
+import { enqueueEr7206Action, enqueueEr7206Create, enqueueEr7206Enable } from "./er7206Queue";
 import { customerByUid, customersWithEmail, customersWithPhone, normalizeEmail, normalizePhone, pickCustomerKeeper } from "./customerRecords";
 
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
@@ -211,7 +211,26 @@ export const createCustomer = onCall(CALLABLE, async (request) => {
     approvalStatus: "approved",
   });
   await writeAudit({ action: "create_customer", adminEmail: owner.email, targetUid: ref.id, detail: name });
-  return { customerId: ref.id, existing: false };
+  const routerUserName = String(request.data?.routerUserName ?? "").trim();
+  let routerJobId: string | null = null;
+  let routerError: string | null = null;
+  if (routerUserName) {
+    try {
+      if (owner.role !== "owner") throw new Error("Only an owner can create router users.");
+      routerJobId = await enqueueEr7206Create({
+        customerId: ref.id,
+        username: routerUserName,
+        password: String(request.data?.routerPassword ?? ""),
+        mac: String(request.data?.routerMac ?? ""),
+        note: name,
+        source: "createCustomer",
+      });
+      await writeAudit({ action: "er7206_create_user", adminEmail: owner.email, targetUid: ref.id, detail: routerUserName });
+    } catch (e) {
+      routerError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  return { customerId: ref.id, existing: false, routerJobId, routerError };
 });
 
 /**
@@ -759,7 +778,8 @@ export const suspendCustomer = onCall(CALLABLE, async (request) => {
   if (!customerId) throw new HttpsError("invalid-argument", "customerId required.");
   await db.collection("customers").doc(customerId).update({ status: "suspended", updatedAtMs: Date.now() });
   await writeAudit({ action: "suspend_customer", adminEmail: owner.email, targetUid: customerId });
-  return { ok: true };
+  const routerJobId = await enqueueEr7206Action(customerId, "block", "suspendCustomer");
+  return { ok: true, routerJobId };
 });
 
 export const linkCustomerAccount = onCall(CALLABLE, async (request) => {

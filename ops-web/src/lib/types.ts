@@ -47,6 +47,7 @@ export type Customer = {
   callRecording?: boolean
   omadaClientMac?: string
   cpeMac?: string
+  er7206UserName?: string
 }
 
 export type Plan = {

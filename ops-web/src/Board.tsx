@@ -30,7 +30,7 @@ export function Board({
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', planId: '' })
+  const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', planId: '', routerUserName: '', routerPassword: '', routerMac: '' })
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -117,8 +117,9 @@ export function Board({
     try {
       const res = await repo.createCustomer(form)
       setCreating(false)
-      setForm({ name: '', phone: '', email: '', address: '', planId: '' })
+      setForm({ name: '', phone: '', email: '', address: '', planId: '', routerUserName: '', routerPassword: '', routerMac: '' })
       if (res.existing) setMsg('A customer with this email already exists. Opened that record instead of creating another.')
+      else if (res.routerError) setMsg(`Customer created, but the router user was not queued: ${res.routerError}`)
       navigate(`/c/${res.customerId}`)
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Could not create customer')
@@ -343,6 +344,25 @@ export function Board({
                 <span className="muted tiny">No plans in catalog — open Plans and seed defaults.</span>
               )}
             </label>
+            <fieldset className="router-user">
+              <legend>Add router user (ER7206, optional)</legend>
+              <label>
+                Router username
+                <input value={form.routerUserName} autoComplete="off" placeholder="e.g. javis"
+                  onChange={(e) => setForm({ ...form, routerUserName: e.target.value })} />
+              </label>
+              <label>
+                Router password
+                <input type="password" value={form.routerPassword} autoComplete="new-password"
+                  onChange={(e) => setForm({ ...form, routerPassword: e.target.value })} />
+              </label>
+              <label>
+                CPE MAC (optional)
+                <input value={form.routerMac} placeholder="AA-BB-CC-DD-EE-FF"
+                  onChange={(e) => setForm({ ...form, routerMac: e.target.value })} />
+              </label>
+              <span className="muted tiny">Creates a new local user on the router within ~30s (never edits existing users). Blocked until paid.</span>
+            </fieldset>
             {msg && <p className="fail">{msg}</p>}
             <div className="modal-actions">
               <button className="btn btn-ghost" type="button" onClick={() => setCreating(false)}>
