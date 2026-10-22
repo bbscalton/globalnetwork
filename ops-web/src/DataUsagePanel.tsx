@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Customer } from './lib/types'
 import { GB, fmtBytes, monthUsed, observeUsage, setDataLimit, setRouterSpeed, type CustomerUsage, type DataLimitAction } from './lib/usage'
 import { fmtWhen } from './lib/desk'
+import { runRouterCommand, useRouterLocks } from './lib/routerLock'
 
 /**
  * Data section on the customer page. Usage comes from the ER7206 IP Statistics (read-only sync).
@@ -16,6 +17,24 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
   const [down, setDown] = useState(String(customer.dataThrottleDownKbps ?? 1024))
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  const locks = useRouterLocks()
+  // Same per-customer lock as the customer page router buttons (see lib/routerLock).
+  const routerKey = `customer-router:${customer.id}`
+  const locked = locks.locked(routerKey)
+  const pendingAction = locks.optimistic<string>(routerKey)
+  const label = (action: string, idle: string) => (locked && pendingAction === action ? locks.lockText(routerKey, idle) : idle)
+  const runRouter = (action: string, fn: () => Promise<{ msg: string; jobId?: string | null }>) => {
+    if (locked) return
+    void run(async () => {
+      let out = ''
+      await runRouterCommand(routerKey, async () => {
+        const r = await fn()
+        out = r.msg
+        return r.jobId ?? null
+      }, { optimistic: action })
+      return out
+    })
+  }
 
   useEffect(() => observeUsage(customer.id, setUsage), [customer.id])
   useEffect(() => {
@@ -27,7 +46,7 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
   const limitBytes = (customer.dataLimitGb ?? 0) > 0 ? (customer.dataLimitGb as number) * GB : 0
   const pct = limitBytes ? Math.min(100, Math.round((used.total / limitBytes) * 100)) : 0
   const over = limitBytes > 0 && used.total >= limitBytes
-  const throttled = customer.er7206Speed?.throttled === true
+  const throttled = pendingAction === 'throttle' ? true : pendingAction === 'restore' ? false : customer.er7206Speed?.throttled === true
 
   const run = async (fn: () => Promise<string>) => {
     setBusy(true); setMsg('')
@@ -66,7 +85,7 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
         <>
           <form className="form-row" style={{ marginTop: '0.6rem' }} onSubmit={(e) => {
             e.preventDefault()
-            void run(async () => {
+            runRouter('limit', async () => {
               const n = Number(limit)
               await setDataLimit(customer.id, {
                 dataLimitGb: Number.isFinite(n) && n > 0 ? n : null,
@@ -74,7 +93,7 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
                 dataThrottleUpKbps: Math.max(10, Number(up) || 512),
                 dataThrottleDownKbps: Math.max(10, Number(down) || 1024),
               })
-              return 'Data limit saved'
+              return { msg: 'Data limit saved' }
             })
           }}>
             <label>Monthly limit (GB)<input inputMode="decimal" value={limit} placeholder="none" onChange={(e) => setLimit(e.target.value)} /></label>
@@ -87,17 +106,17 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
             </label>
             <label>Reduced up (Kbps)<input inputMode="numeric" value={up} onChange={(e) => setUp(e.target.value)} /></label>
             <label>Reduced down (Kbps)<input inputMode="numeric" value={down} onChange={(e) => setDown(e.target.value)} /></label>
-            <button className="btn btn-ghost" type="submit" disabled={busy}>Save limit</button>
+            <button className="btn btn-ghost" type="submit" disabled={busy || locked}>{label('limit', 'Save limit')}</button>
           </form>
           <span className="form-row">
-            <button className="btn btn-ghost warn" type="button" disabled={busy} onClick={() => void run(async () => {
+            <button className="btn btn-ghost warn" type="button" disabled={busy || locked} onClick={() => runRouter('throttle', async () => {
               const r = await setRouterSpeed({ customerId: customer.id, action: 'throttle', upBand: Number(up), downBand: Number(down) })
-              return `Speed drop queued (${r.routerJobId}); router applies it within ~30s`
-            })}>Drop speed now</button>
-            <button className="btn btn-ghost" type="button" disabled={busy} onClick={() => void run(async () => {
+              return { msg: `Speed drop queued (${r.routerJobId}); router applies it within ~30s`, jobId: r.routerJobId }
+            })}>{label('throttle', 'Drop speed now')}</button>
+            <button className="btn btn-ghost" type="button" disabled={busy || locked} onClick={() => runRouter('restore', async () => {
               const r = await setRouterSpeed({ customerId: customer.id, action: 'restore' })
-              return `Full speed restore queued (${r.routerJobId})`
-            })}>Restore full speed</button>
+              return { msg: `Full speed restore queued (${r.routerJobId})`, jobId: r.routerJobId }
+            })}>{label('restore', 'Restore full speed')}</button>
           </span>
           <div className="muted tiny">
             Speed uses the router user's own Upstream/Downstream Bandwidth fields (0 = unlimited). Cut off uses the existing router block.
@@ -105,6 +124,7 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
           </div>
         </>
       )}
+      {locks.note(routerKey) && <p className="tiny warn-text">{locks.note(routerKey)}</p>}
       {msg && <p className="muted tiny">{msg}</p>}
     </div>
   )
