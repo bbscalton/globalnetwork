@@ -1,9 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Customer, CustomerStatus, ExtensionRequest, IssueTicket, Plan } from './lib/types'
 import * as repo from './lib/repo'
 import { cyclePct, deskPulse, fmtDate, initials, remainingShort, statusTone } from './lib/desk'
 import { ONLINE_AFTER_MS } from './lib/firebase'
+import { GB, fmtBytes, monthUsed, observeAllUsage, type CustomerUsage } from './lib/usage'
 
 type Filter = 'all' | CustomerStatus | 'due' | 'owed' | 'pending'
 
@@ -23,6 +24,8 @@ export function Board({
   pendingExtensions?: ExtensionRequest[]
 }) {
   const navigate = useNavigate()
+  const [usage, setUsage] = useState<Record<string, CustomerUsage>>({})
+  useEffect(() => observeAllUsage(setUsage), [])
   const pulse = useMemo(
     () => deskPulse(customers, issues, now, ONLINE_AFTER_MS, renewalWarnDays),
     [customers, issues, now, renewalWarnDays],
@@ -240,6 +243,7 @@ export function Board({
               <th>Service</th>
               <th>Cycle</th>
               <th>Balance</th>
+              <th>Data (month)</th>
               <th></th>
             </tr>
           </thead>
@@ -282,6 +286,18 @@ export function Board({
                     </div>
                   </td>
                   <td className={c.balanceDue > 0 ? 'warn-text' : ''}>{repo.formatEc(c.balanceDue)}</td>
+                  <td>{(() => {
+                    const u = usage[c.id]
+                    if (!c.er7206UserName || !u) return <span className="muted tiny">—</span>
+                    const used = monthUsed(u, now).total
+                    const lim = (c.dataLimitGb ?? 0) > 0 ? (c.dataLimitGb as number) * GB : 0
+                    return (
+                      <span className={lim && used >= lim ? 'warn-text' : ''}>
+                        {fmtBytes(used)}{lim ? ` / ${c.dataLimitGb} GB` : ''}
+                        {c.er7206Speed?.throttled && <span className="pill warn" style={{ marginLeft: 4 }}>slow</span>}
+                      </span>
+                    )
+                  })()}</td>
                   <td className="roster-actions" onClick={(e) => e.stopPropagation()}>
                     <button
                       className="btn btn-ghost danger btn-tiny"

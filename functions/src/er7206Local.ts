@@ -242,6 +242,41 @@ export const er7206CreateRouterUser = onCall(LOCAL_CALLABLE, async (request) => 
 });
 
 
+/**
+ * Desk speed control: queue a per-user rate limit on the router local user (upBand/downBand,
+ * same get-then-set path as enable/expiry; 0 = no limit, else 10..1000000). Owner only.
+ * action "throttle" needs upBand + downBand; "restore" sets both back to 0 (full speed).
+ */
+export const er7206SetSpeed = onCall(LOCAL_CALLABLE, async (request) => {
+  const owner = await requireOwner(request);
+  const customerId = String(request.data?.customerId ?? "").trim();
+  const action = String(request.data?.action ?? "").trim();
+  if (!customerId || (action !== "throttle" && action !== "restore")) {
+    throw new HttpsError("invalid-argument", "customerId and action throttle|restore required");
+  }
+  const band = (v: unknown) => {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n) || !(n === 0 || (n >= 10 && n <= 1000000))) {
+      throw new HttpsError("invalid-argument", "Bandwidth must be 0 or 10..1000000");
+    }
+    return String(n);
+  };
+  const upBand = action === "throttle" ? band(request.data?.upBand) : "0";
+  const downBand = action === "throttle" ? band(request.data?.downBand) : "0";
+  const snap = await db.collection("customers").doc(customerId).get();
+  if (!snap.exists) throw new HttpsError("not-found", "Customer not found");
+  const username = String(snap.get("er7206UserName") ?? "").trim();
+  if (!username) throw new HttpsError("failed-precondition", "Customer is not linked to a router user");
+  const ref = db.collection("er7206Queue").doc();
+  await ref.set({
+    action, customerId, username, upBand, downBand,
+    status: "pending", createdAtMs: Date.now(), source: "er7206SetSpeed",
+  });
+  await writeAudit({ action: `er7206_${action}`, adminEmail: owner.email, targetUid: customerId,
+    detail: `${username} up=${upBand} down=${downBand}` });
+  return { ok: true, routerJobId: ref.id };
+});
+
 const REVIEW_REF = db.collection("adminConfig").doc("er7206LocalReview");
 
 /** VPS connector ingest: review list + optional confident customer patches. Never creates customers. */
