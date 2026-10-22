@@ -15,13 +15,10 @@ import { CallOverlay } from './CallOverlay'
 import { FieldMap } from './FieldMap'
 import { IssuesDesk } from './IssuesDesk'
 import { PlansDesk } from './PlansDesk'
-import { DevicesDesk } from './DevicesDesk'
-import { OmadaDesk } from './OmadaDesk'
 import { Er7206LocalDesk } from './Er7206LocalDesk'
 import { NetworkDesk } from './NetworkDesk'
 import { SettingsDesk } from './SettingsDesk'
 import { OutletsDesk } from './OutletsDesk'
-import { SUPPORTED_DEVICE_COUNT } from './lib/supportedDevices'
 import { POS_WEB_URL } from './lib/admin'
 import { customerPin } from './lib/geo'
 
@@ -281,12 +278,7 @@ function Shell({
         <NavLink to="/plans">Plans</NavLink>
         {owner && (
           <>
-            <NavLink to="/devices">
-              Devices
-              <span className="nav-count">{SUPPORTED_DEVICE_COUNT}</span>
-            </NavLink>
             <NavLink to="/network">Network</NavLink>
-            <NavLink to="/er7206">Legacy ER7206</NavLink>
             <NavLink to="/er7206-local">ER7206 (local users)</NavLink>
             <NavLink to="/settings">Settings</NavLink>
           </>
@@ -326,9 +318,7 @@ function Shell({
             element={<PlansDesk plans={plans} customers={customers} now={now} renewalWarnDays={warnDays} />}
           />
           <Route path="/outlets" element={<OutletsDesk />} />
-          <Route path="/devices" element={owner ? <DevicesDesk /> : <Navigate to="/outlets" replace />} />
           <Route path="/network" element={owner ? <NetworkDesk customers={customers} /> : <Navigate to="/outlets" replace />} />
-          <Route path="/er7206" element={owner ? <OmadaDesk customers={customers} /> : <Navigate to="/outlets" replace />} />
           <Route path="/er7206-local" element={owner ? <Er7206LocalDesk customers={customers} /> : <Navigate to="/outlets" replace />} />
           <Route path="/settings" element={owner ? <SettingsDesk org={org} customers={customers} /> : <Navigate to="/outlets" replace />} />
           <Route path="/accounts" element={<Navigate to={owner ? '/settings?tab=roles' : '/outlets'} replace />} />
