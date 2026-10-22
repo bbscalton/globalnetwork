@@ -30,9 +30,14 @@ machine's Android debug keystore.
 
 ## Publish
 
-Upload to R2 as `orgs/globalnetwork/app/globalnetwork-desk.apk`. The Worker
-serves it at `/app/desk.apk`. Do not overwrite `/app/android.apk` (customer app).
+Hosted on the VPS (since 2026-10-21): https://dl.neuereatec.org/globalnetwork/app/desk.apk
+(`/app/owner.apk` is an alias). Per-client desk builds use their own slot, e.g. `desk-acme`
+-> https://dl.neuereatec.org/globalnetwork/app/desk-acme.apk. Do not overwrite `android` (customer app).
+Build locally (it must be signed with the same key as the installed desk app, or updates fail), then:
 
 ```powershell
-npx wrangler r2 object put globalnetwork-media/orgs/globalnetwork/app/globalnetwork-desk.apk --file app/build/outputs/apk/release/app-release.apk --content-type application/vnd.android.package-archive --remote
+$env:APK_UPLOAD_TOKEN = '<token>'   # same value as GitHub secret APK_UPLOAD_TOKEN
+..\scripts\publish-apk.ps1 -Slot desk -File app\build\outputs\apk\release\app-release.apk -Version 1.0.x
 ```
+
+The old Cloudflare copy (R2 `orgs/globalnetwork/app/globalnetwork-desk.apk` via the `globalnetwork-media` Worker) is a legacy fallback only.

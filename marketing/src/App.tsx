@@ -5,12 +5,17 @@ const OPS = (import.meta.env.VITE_OPS_WEB_URL as string | undefined) || './ops/'
 const POS = (import.meta.env.VITE_POS_WEB_URL as string | undefined) || './pos/'
 const WEB_APP =
   (import.meta.env.VITE_CUSTOMER_WEB_URL as string | undefined) || './app/'
-const APK =
-  (import.meta.env.VITE_ANDROID_APK_URL as string | undefined) ||
-  'https://globalnetwork-media.neuereatec.workers.dev/app/android.apk'
-const DESK_APK =
-  (import.meta.env.VITE_DESK_APK_URL as string | undefined) ||
-  'https://globalnetwork-media.neuereatec.workers.dev/app/desk.apk'
+// APKs are hosted on the VPS (dl.neuereatec.org) since 2026-10-21. Legacy Cloudflare Worker URLs
+// (e.g. still set in the Pages workflow env) are rewritten to the VPS copy.
+const LEGACY_APK_BASE = 'https://globalnetwork-media.neuereatec.workers.dev/app/'
+const VPS_APK_BASE = 'https://dl.neuereatec.org/globalnetwork/app/'
+const toVps = (u: string) => (u.startsWith(LEGACY_APK_BASE) ? VPS_APK_BASE + u.slice(LEGACY_APK_BASE.length) : u)
+const APK = toVps(
+  (import.meta.env.VITE_ANDROID_APK_URL as string | undefined) || VPS_APK_BASE + 'android.apk',
+)
+const DESK_APK = toVps(
+  (import.meta.env.VITE_DESK_APK_URL as string | undefined) || VPS_APK_BASE + 'desk.apk',
+)
 
 const NAV = [
   ['#why', 'Why us'],
