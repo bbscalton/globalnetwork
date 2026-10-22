@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, formatAntiguaDate, paidUntilAfterGrant, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
+import { enqueueEr7206Enable } from "./er7206Queue";
 import { customerByUid, customersWithEmail, customersWithPhone, normalizeEmail, normalizePhone, pickCustomerKeeper } from "./customerRecords";
 
 const COORD = /^\s*(-?\d{1,2}\.\d+)\s*[ ,]\s*(-?\d{1,3}\.\d+)\s*$/;
@@ -233,6 +234,7 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
 
   const ref = db.collection("customers").doc(customerId);
   const now = Date.now();
+  let prevUntilForQueue = 0;
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
@@ -250,6 +252,7 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
     const dues = readDues(snap);
     const prevPaid = Number(snap.get("paidAmount") ?? 0);
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
+    prevUntilForQueue = prevUntil;
     const statusNow = String(snap.get("status") ?? "expired");
     const stillActive = (statusNow === "active" || statusNow === "grace") && prevUntil > now;
     const paidUntilMs = paidUntilAfterGrant(prevUntil, days, now, stillActive);
@@ -318,6 +321,7 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
     targetUid: customerId,
     detail: `${days}d paid ${amountPaid} planDue=0 extDue=${result.extensionDue} note=${note}`,
   });
+  await enqueueEr7206Enable(customerId, prevUntilForQueue, result.paidUntilMs, "extendSubscription");
 
   const customer = await ref.get();
   await sendToToken(
@@ -360,10 +364,12 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
 
   const ref = db.collection("customers").doc(customerId);
   const now = Date.now();
+  let prevUntilForQueue = 0;
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
+    prevUntilForQueue = prevUntil;
     const statusNow = String(snap.get("status") ?? "expired");
     const dues = readDues(snap);
     const stillActive = (statusNow === "active" || statusNow === "grace") && prevUntil > now;
@@ -424,6 +430,7 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
     targetUid: customerId,
     detail: `${days}d ${paidNow ? "paid" : "charged"} ${charge} note=${ledgerNote}`,
   });
+  await enqueueEr7206Enable(customerId, prevUntilForQueue, result.paidUntilMs, "grantDayExtension");
 
   const customer = await ref.get();
   await sendToToken(
@@ -478,6 +485,7 @@ export const collectPayment = onCall(CALLABLE, async (request) => {
   
   const ref = db.collection("customers").doc(customerId);
   const now = Date.now();
+  let prevUntilForQueue = 0;
   
   const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -489,6 +497,7 @@ export const collectPayment = onCall(CALLABLE, async (request) => {
     const prevTotalPaid = Number(snap.get("totalPaid") ?? Number(snap.get("paidAmount") ?? 0));
     const prevBalanceOwed = Number(snap.get("balanceOwed") ?? prevTotalOwed - prevTotalPaid);
     const prevUntil = Number(snap.get("paidUntilMs") ?? 0);
+    prevUntilForQueue = prevUntil;
     const statusNow = String(snap.get("status") ?? "expired");
     
     // Apply payment to balance
@@ -598,6 +607,7 @@ export const collectPayment = onCall(CALLABLE, async (request) => {
     targetUid: customerId,
     detail: `EC$${amountPaid} paid · ${grantDays}d granted · balance EC$${result.balanceOwed.toFixed(2)}`,
   });
+  await enqueueEr7206Enable(customerId, prevUntilForQueue, result.paidUntilMs, "collectPayment");
   
   const customer = await ref.get();
   if (grantDays > 0) {
@@ -1063,6 +1073,7 @@ export const processExtensionRequest = onCall(CALLABLE, async (request) => {
     targetUid: customerId,
     detail: `${days}d EC$${totalXcd} ${paidNow ? "paid" : "charged"} until ${formatAntiguaDate(paidUntilMs)}`,
   });
+  await enqueueEr7206Enable(customerId, prevUntil, paidUntilMs, "processExtensionRequest");
   
   return {
     ok: true,
