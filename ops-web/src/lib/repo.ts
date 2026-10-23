@@ -79,6 +79,11 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     omadaClientMac: String(data.omadaClientMac ?? data.cpeMac ?? ''),
     cpeMac: String(data.cpeMac ?? data.omadaClientMac ?? ''),
     er7206UserName: String(data.er7206UserName ?? ''),
+    dataLimitGb: data.dataLimitGb == null || data.dataLimitGb === '' ? null : Number(data.dataLimitGb),
+    dataLimitAction: (data.dataLimitAction as Customer['dataLimitAction']) || undefined,
+    dataThrottleUpKbps: data.dataThrottleUpKbps == null ? undefined : Number(data.dataThrottleUpKbps),
+    dataThrottleDownKbps: data.dataThrottleDownKbps == null ? undefined : Number(data.dataThrottleDownKbps),
+    er7206Speed: (data.er7206Speed as Customer['er7206Speed']) ?? undefined,
   }
 }
 
