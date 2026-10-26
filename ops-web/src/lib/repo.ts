@@ -123,6 +123,7 @@ export function observeOrg(orgId: string, onData: (row: OrgSettings | null) => v
         supportPhone: String(data.supportPhone ?? ''),
         supportWhatsapp: String(data.supportWhatsapp ?? ''),
         botEnabled: data.botEnabled !== false,
+        routerConnectorPaused: data.routerConnectorPaused === true,
         callRecordingDefault: data.callRecordingDefault === true,
         renewalWarnDays: Math.max(1, Math.min(30, Number(data.renewalWarnDays ?? DEFAULT_ORG_SETTINGS.renewalWarnDays) || 3)),
         timezone: String(data.timezone ?? DEFAULT_ORG_SETTINGS.timezone) || DEFAULT_ORG_SETTINGS.timezone,

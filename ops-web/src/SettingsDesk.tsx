@@ -21,6 +21,7 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
   const [supportPhone, setSupportPhone] = useState('')
   const [supportWhatsapp, setSupportWhatsapp] = useState('')
   const [botEnabled, setBotEnabled] = useState(true)
+  const [routerConnectorPaused, setRouterConnectorPaused] = useState(false)
   const [callRecordingDefault, setCallRecordingDefault] = useState(false)
   const [renewalWarnDays, setRenewalWarnDays] = useState(String(DEFAULT_ORG_SETTINGS.renewalWarnDays))
   const [timezone, setTimezone] = useState(DEFAULT_ORG_SETTINGS.timezone)
@@ -45,6 +46,7 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
     setSupportPhone(next.supportPhone)
     setSupportWhatsapp(next.supportWhatsapp)
     setBotEnabled(next.botEnabled)
+    setRouterConnectorPaused(next.routerConnectorPaused)
     setCallRecordingDefault(next.callRecordingDefault)
     setRenewalWarnDays(String(next.renewalWarnDays))
     setTimezone(next.timezone)
@@ -110,6 +112,7 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
         supportPhone: supportPhone.trim(),
         supportWhatsapp: supportWhatsapp.trim(),
         botEnabled,
+        routerConnectorPaused,
         callRecordingDefault,
         renewalWarnDays: Number(renewalWarnDays),
         timezone: timezone.trim() || DEFAULT_ORG_SETTINGS.timezone,
@@ -234,6 +237,10 @@ export function SettingsDesk({ org, customers = [] }: { org: OrgSettings | null;
         <label className="toggle-field">
           <input type="checkbox" checked={botEnabled} onChange={(e) => setBotEnabled(e.target.checked)} />
           Desk bot auto-replies
+        </label>
+        <label className="toggle-field">
+          <input type="checkbox" checked={routerConnectorPaused} onChange={(e) => setRouterConnectorPaused(e.target.checked)} />
+          Pause router connector (no router logins)
         </label>
         <label className="toggle-field">
           <input type="checkbox" checked={callRecordingDefault} onChange={(e) => setCallRecordingDefault(e.target.checked)} />

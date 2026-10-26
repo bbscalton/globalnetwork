@@ -156,6 +156,7 @@ export type OrgSettings = {
   supportPhone: string
   supportWhatsapp: string
   botEnabled: boolean
+  routerConnectorPaused: boolean
   callRecordingDefault: boolean
   renewalWarnDays: number
   timezone: string
@@ -167,6 +168,7 @@ export const DEFAULT_ORG_SETTINGS: OrgSettings = {
   supportPhone: '',
   supportWhatsapp: '',
   botEnabled: true,
+  routerConnectorPaused: false,
   callRecordingDefault: false,
   renewalWarnDays: 3,
   timezone: 'America/Antigua',
