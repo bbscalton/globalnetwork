@@ -1,4 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { logger } from "firebase-functions";
 import {
   FieldPath,
   type CollectionReference,
@@ -495,10 +497,29 @@ async function deleteCustomerTree(ref: DocumentReference): Promise<void> {
  * Customer self-service account deletion (Apple in-app deletion requirement).
  * Caller must be signed in, must not be desk staff/owner, and customerId must be
  * the customer record linked to the caller's uid. Auth user is deleted last.
- * Note: R2 media under orgs/globalnetwork/customers/{id}/ is NOT deleted here
- * (the media worker has no delete endpoint).
+ * R2 media under orgs/globalnetwork/customers/{id}/ is deleted via the media worker;
+ * a media failure is logged and audit-noted but does not block account deletion.
  */
-export const deleteMyAccount = onCall(CALLABLE, async (request) => {
+const MEDIA_ADMIN_SECRET = defineSecret("MEDIA_ADMIN_SECRET");
+const MEDIA_WORKER_FALLBACK = "https://globalnetwork-media.neuereatec.workers.dev";
+
+async function deleteCustomerMedia(customerId: string): Promise<{ ok: boolean; deleted?: number; error?: string }> {
+  try {
+    const base = (process.env.R2_MEDIA_PROXY_BASE_URL || MEDIA_WORKER_FALLBACK).replace(/\/$/, "");
+    const res = await fetch(`${base}/admin/delete-prefix`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-media-admin-secret": MEDIA_ADMIN_SECRET.value() },
+      body: JSON.stringify({ prefix: `orgs/${DEFAULT_ORG_ID}/customers/${customerId}/` }),
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const body = (await res.json()) as { deleted?: number };
+    return { ok: true, deleted: Number(body.deleted ?? 0) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export const deleteMyAccount = onCall({ ...CALLABLE, secrets: [MEDIA_ADMIN_SECRET] }, async (request) => {
   const { uid, email } = requireAuth(request);
   const customerId = String(request.data?.customerId ?? "").trim();
   if (!customerId) throw new HttpsError("invalid-argument", "customerId is required.");
@@ -517,7 +538,10 @@ export const deleteMyAccount = onCall(CALLABLE, async (request) => {
 
   const name = String(mine.get("name") ?? customerId);
   await deleteCustomerTree(mine.ref);
-  await writeAudit({ action: "self_delete", adminEmail: email || uid, targetUid: customerId, detail: name });
+  const media = await deleteCustomerMedia(customerId);
+  if (!media.ok) logger.error("deleteMyAccount: media deletion failed", { customerId, error: media.error });
+  const mediaNote = media.ok ? `media deleted: ${media.deleted}` : `media deletion FAILED: ${media.error}`;
+  await writeAudit({ action: "self_delete", adminEmail: email || uid, targetUid: customerId, detail: `${name}; ${mediaNote}` });
   try {
     await getAuth().deleteUser(uid);
   } catch (error) {

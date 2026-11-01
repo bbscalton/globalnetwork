@@ -9,6 +9,7 @@ type Env = {
   MEDIA_SIGNING_SECRET?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
+  MEDIA_ADMIN_SECRET?: string;
 };
 
 type Status = "ok" | "warn" | "fail";
@@ -332,6 +333,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/$/, "") || "/";
 
+    if (path === "/admin/delete-prefix" && request.method === "POST") {
+      return handleDeletePrefix(request, env);
+    }
+
     if (path === "/app/android.apk" || path === "/app/globalnetwork.apk") {
       return serveAppFile(
         request,
@@ -492,4 +497,48 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     }
 
     return cors({ error: "not found" }, 404);
+}
+
+const DELETE_PREFIX_RE = /^orgs\/globalnetwork\/customers\/[A-Za-z0-9_-]+\/$/;
+
+async function secretMatches(given: string, expected: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(given)),
+    crypto.subtle.digest("SHA-256", enc.encode(expected)),
+  ]);
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
+/** Server-to-server only: delete every object under one customer's media prefix. */
+async function handleDeletePrefix(request: Request, env: Env): Promise<Response> {
+  const expected = env.MEDIA_ADMIN_SECRET || "";
+  const given = request.headers.get("x-media-admin-secret") || "";
+  if (!expected || expected.length < 32 || !given || !(await secretMatches(given, expected))) {
+    return cors({ error: "forbidden" }, 403);
+  }
+  let prefix = "";
+  try {
+    const body = (await request.json()) as { prefix?: unknown };
+    prefix = typeof body?.prefix === "string" ? body.prefix : "";
+  } catch {
+    return cors({ error: "invalid json" }, 400);
+  }
+  if (!DELETE_PREFIX_RE.test(prefix)) return cors({ error: "invalid prefix" }, 400);
+  let deleted = 0;
+  let cursor: string | undefined;
+  do {
+    const page = await env.MEDIA_BUCKET.list({ prefix, cursor, limit: 1000 });
+    const keys = page.objects.map((o) => o.key).filter((k) => k.startsWith(prefix));
+    if (keys.length) {
+      await env.MEDIA_BUCKET.delete(keys);
+      deleted += keys.length;
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return cors({ deleted });
 }
