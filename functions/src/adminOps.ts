@@ -18,11 +18,15 @@ import {
   addAntiguaDays,
   antiguaParts,
   db,
+  isFounderEmail,
+  memberDoc,
+  requireAuth,
   requireOwner,
   sendToToken,
   writeAudit,
 } from "./context";
-import { absorbCustomer, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
+import { getAuth } from "firebase-admin/auth";
+import { absorbCustomer, customerByUid, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
 import { enqueueEr7206Action, enqueueEr7206Enable } from "./er7206Queue";
 
 export const DEFAULT_ORG_SETTINGS = {
@@ -477,8 +481,49 @@ export const deleteCustomer = onCall(CALLABLE, async (request) => {
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError("not-found", "Customer not found.");
   const name = String(snap.get("name") ?? customerId);
-  await db.recursiveDelete(ref);
+  await deleteCustomerTree(ref);
   await writeAudit({ action: "delete_customer", adminEmail: owner.email, targetUid: customerId, detail: name });
+  return { ok: true };
+});
+
+/** Shared by deleteCustomer and deleteMyAccount: the customer doc and all subcollections. */
+async function deleteCustomerTree(ref: DocumentReference): Promise<void> {
+  await db.recursiveDelete(ref);
+}
+
+/**
+ * Customer self-service account deletion (Apple in-app deletion requirement).
+ * Caller must be signed in, must not be desk staff/owner, and customerId must be
+ * the customer record linked to the caller's uid. Auth user is deleted last.
+ * Note: R2 media under orgs/globalnetwork/customers/{id}/ is NOT deleted here
+ * (the media worker has no delete endpoint).
+ */
+export const deleteMyAccount = onCall(CALLABLE, async (request) => {
+  const { uid, email } = requireAuth(request);
+  const customerId = String(request.data?.customerId ?? "").trim();
+  if (!customerId) throw new HttpsError("invalid-argument", "customerId is required.");
+
+  const token = (request.auth?.token ?? {}) as Record<string, unknown>;
+  const member = await memberDoc(uid);
+  if (isFounderEmail(email) || token.owner === true || member.exists) {
+    throw new HttpsError("permission-denied", "Staff and owner accounts cannot be deleted from the customer app.");
+  }
+
+  const mine = await customerByUid(uid);
+  if (!mine) throw new HttpsError("not-found", "Customer not found.");
+  if (mine.id !== customerId) {
+    throw new HttpsError("permission-denied", "You can only delete your own account.");
+  }
+
+  const name = String(mine.get("name") ?? customerId);
+  await deleteCustomerTree(mine.ref);
+  await writeAudit({ action: "self_delete", adminEmail: email || uid, targetUid: customerId, detail: name });
+  try {
+    await getAuth().deleteUser(uid);
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code !== "auth/user-not-found") throw new HttpsError("internal", "Account data deleted but sign-in removal failed.");
+  }
   return { ok: true };
 });
 

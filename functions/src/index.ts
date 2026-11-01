@@ -49,6 +49,7 @@ export {
   unsuspendCustomer,
   deletePlan,
   deleteCustomer,
+  deleteMyAccount,
   clearCustomerChat,
   deleteChatMessage,
   updateChatMessage,
