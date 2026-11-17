@@ -3,6 +3,24 @@ import { httpsCallable } from 'firebase/functions'
 import { COL, db, functions } from './firebase'
 
 /** customers/{id}/usage/current — written by the VPS connector from ER7206 IP Statistics. */
+export type UsagePeriodKind = 'plan' | 'renewal' | 'extension' | 'reactivation' | 'adjust' | 'migrated'
+export type UsagePeriodStatus = 'open' | 'closed'
+
+export type UsagePeriodSummary = {
+  startMs?: number | null
+  endMs?: number | null
+  kind?: UsagePeriodKind | string
+  status?: UsagePeriodStatus | string
+  downBytes?: number
+  upBytes?: number
+  countedFromMs?: number | null
+  endedAtMs?: number | null
+  endedReason?: string | null
+  overageDownBytes?: number
+  overageUpBytes?: number
+  migrated?: boolean
+}
+
 export type CustomerUsage = {
   customerId: string
   userName?: string
@@ -18,6 +36,19 @@ export type CustomerUsage = {
   txBps?: number
   trackingSinceMs?: number
   updatedAtMs?: number
+  periodId?: string | null
+  periodStartMs?: number | null
+  periodEndMs?: number | null
+  periodKind?: UsagePeriodKind | string | null
+  periodStatus?: UsagePeriodStatus | string | null
+  periodDownBytes?: number
+  periodUpBytes?: number
+  periodCountedFromMs?: number | null
+  periodEndedAtMs?: number | null
+  periodEndedReason?: string | null
+  overageDownBytes?: number
+  overageUpBytes?: number
+  periods?: Record<string, UsagePeriodSummary>
 }
 
 export type DataLimitAction = 'alert' | 'throttle' | 'cap'
@@ -28,12 +59,39 @@ export function currentMonth(now = Date.now()): string {
   return `${p.find((x) => x.type === 'year')?.value}-${p.find((x) => x.type === 'month')?.value}`
 }
 
-/** Bytes used this month (desk-side month selection; buckets are delta-based so router counter resets are safe). */
+/** Bytes used this calendar month (legacy buckets; kept for history). */
 export function monthUsed(u: CustomerUsage | undefined, now = Date.now()): { down: number; up: number; total: number } {
   const b = u?.months?.[currentMonth(now)]
   const down = b?.downBytes ?? 0
   const up = b?.upBytes ?? 0
   return { down, up, total: down + up }
+}
+
+/** Bytes used in the current paid window (payment/renewal/extension). Falls back to calendar month if the connector has not written period fields yet. */
+export function periodUsed(u: CustomerUsage | undefined, now = Date.now()): { down: number; up: number; total: number; fallback: 'period' | 'month' } {
+  if (u && (u.periodId || u.periodStartMs || u.periodDownBytes != null || u.periodUpBytes != null)) {
+    const down = Number(u.periodDownBytes ?? 0)
+    const up = Number(u.periodUpBytes ?? 0)
+    return { down, up, total: down + up, fallback: 'period' }
+  }
+  const m = monthUsed(u, now)
+  return { ...m, fallback: 'month' }
+}
+
+const GUYANA_DATE = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Guyana', month: 'short', day: 'numeric', year: 'numeric' })
+
+export function fmtPeriodRange(startMs?: number | null, endMs?: number | null): string {
+  if (!startMs) return ''
+  const start = GUYANA_DATE.format(new Date(startMs))
+  if (!endMs) return `from ${start}`
+  return `${start} – ${GUYANA_DATE.format(new Date(endMs))}`
+}
+
+export function periodHistory(u: CustomerUsage | undefined): Array<UsagePeriodSummary & { id: string }> {
+  const map = u?.periods ?? {}
+  return Object.entries(map)
+    .map(([id, v]) => ({ id, ...(v || {}) }))
+    .sort((a, b) => Number(b.startMs ?? 0) - Number(a.startMs ?? 0))
 }
 
 export function fmtBytes(n: number | undefined | null): string {

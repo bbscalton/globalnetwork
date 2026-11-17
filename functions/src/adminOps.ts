@@ -28,6 +28,7 @@ import {
   writeAudit,
 } from "./context";
 import { getAuth } from "firebase-admin/auth";
+import { usagePeriodFields } from "./usagePeriod";
 import { absorbCustomer, customerByUid, normalizeEmail, pickCustomerKeeper } from "./customerRecords";
 import { enqueueEr7206Action, enqueueEr7206Enable } from "./er7206Queue";
 
@@ -366,12 +367,19 @@ export const adjustSubscription = onCall(CALLABLE, async (request) => {
     else if (status === "active" || status === "expired" || !stillPaid) graceUntilMs = null;
     const daysGranted = hasAddDays ? Math.floor(Number(request.data.addDays)) : left;
 
+    const wasPaid = prevUntil > now && (currentStatus === "active" || currentStatus === "grace");
+    const nowPaid = stillPaid && status !== "suspended";
+    const addDaysVal = hasAddDays ? Math.floor(Number(request.data.addDays)) : 0;
+    const startNewPeriod = nowPaid && ((!wasPaid) || (hasAddDays && addDaysVal > 0));
+    const periodKind = !wasPaid && nowPaid ? "reactivation" : "adjust";
+
     tx.update(ref, {
       paidUntilMs,
       status,
       graceUntilMs,
       updatedAtMs: now,
       updatedBy: owner.email,
+      ...(startNewPeriod ? usagePeriodFields(now, paidUntilMs, periodKind) : {}),
     });
     tx.set(ref.collection("payments").doc(), {
       amount: 0,
@@ -420,7 +428,11 @@ export const unsuspendCustomer = onCall(CALLABLE, async (request) => {
   const paidUntilMs = Number(snap.get("paidUntilMs") ?? 0);
   const graceUntilMs = Number(snap.get("graceUntilMs") ?? 0);
   const status = statusFromTimestamps(paidUntilMs, graceUntilMs, now);
-  await ref.update({ status, updatedAtMs: now, updatedBy: owner.email });
+  const unsuspendPatch: Record<string, unknown> = { status, updatedAtMs: now, updatedBy: owner.email };
+  if (status !== "expired" && paidUntilMs > now) {
+    Object.assign(unsuspendPatch, usagePeriodFields(now, paidUntilMs, "reactivation"));
+  }
+  await ref.update(unsuspendPatch);
   await writeAudit({ action: "unsuspend_customer", adminEmail: owner.email, targetUid: customerId, detail: status });
   // Unblock on the router only while the desk still shows paid time (worker re-checks; never shortens expiry).
   if (status !== "expired" && paidUntilMs > now) {

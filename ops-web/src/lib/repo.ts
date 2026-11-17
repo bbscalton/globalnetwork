@@ -84,6 +84,10 @@ function asCustomer(id: string, data: Record<string, unknown>): Customer {
     dataThrottleUpKbps: data.dataThrottleUpKbps == null ? undefined : Number(data.dataThrottleUpKbps),
     dataThrottleDownKbps: data.dataThrottleDownKbps == null ? undefined : Number(data.dataThrottleDownKbps),
     er7206Speed: (data.er7206Speed as Customer['er7206Speed']) ?? undefined,
+    usagePeriodId: data.usagePeriodId == null ? null : String(data.usagePeriodId),
+    usagePeriodStartMs: data.usagePeriodStartMs == null || data.usagePeriodStartMs === '' ? null : Number(data.usagePeriodStartMs),
+    usagePeriodEndMs: data.usagePeriodEndMs == null || data.usagePeriodEndMs === '' ? null : Number(data.usagePeriodEndMs),
+    usagePeriodKind: data.usagePeriodKind == null ? null : String(data.usagePeriodKind),
   }
 }
 

@@ -4,7 +4,7 @@ import type { Customer, CustomerStatus, ExtensionRequest, IssueTicket, Plan } fr
 import * as repo from './lib/repo'
 import { cyclePct, deskPulse, fmtDate, initials, remainingShort, statusTone } from './lib/desk'
 import { ONLINE_AFTER_MS } from './lib/firebase'
-import { GB, fmtBytes, monthUsed, observeAllUsage, type CustomerUsage } from './lib/usage'
+import { GB, fmtBytes, periodUsed, fmtPeriodRange, observeAllUsage, type CustomerUsage } from './lib/usage'
 
 type Filter = 'all' | CustomerStatus | 'due' | 'owed' | 'pending'
 
@@ -243,7 +243,7 @@ export function Board({
               <th>Service</th>
               <th>Cycle</th>
               <th>Balance</th>
-              <th>Data (month)</th>
+              <th>Data (period)</th>
               <th></th>
             </tr>
           </thead>
@@ -289,10 +289,10 @@ export function Board({
                   <td>{(() => {
                     const u = usage[c.id]
                     if (!c.er7206UserName || !u) return <span className="muted tiny">—</span>
-                    const used = monthUsed(u, now).total
+                    const used = periodUsed(u, now).total
                     const lim = (c.dataLimitGb ?? 0) > 0 ? (c.dataLimitGb as number) * GB : 0
                     return (
-                      <span className={lim && used >= lim ? 'warn-text' : ''}>
+                      <span className={lim && used >= lim ? 'warn-text' : ''} title={fmtPeriodRange(u.periodStartMs, u.periodEndMs) || undefined}>
                         {fmtBytes(used)}{lim ? ` / ${c.dataLimitGb} GB` : ''}
                         {c.er7206Speed?.throttled && <span className="pill warn" style={{ marginLeft: 4 }}>slow</span>}
                       </span>

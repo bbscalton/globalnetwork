@@ -2,8 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
-/// "My usage": this customer's own data use this month (customers/{id}/usage/current).
+/// "My usage": this customer's data use in the current paid window (customers/{id}/usage/current).
 /// Firestore rules only allow the signed-in owner of this customer record (or desk staff) to read it.
+/// Falls back to the calendar-month bucket only if the connector has not written period fields yet.
 class MyUsageCard extends StatelessWidget {
   const MyUsageCard({super.key, required this.customerId});
 
@@ -13,6 +14,21 @@ class MyUsageCard extends StatelessWidget {
     // Router / billing zone: America/Guyana (UTC-4, no DST).
     final t = DateTime.now().toUtc().subtract(const Duration(hours: 4));
     return '${t.year}-${t.month.toString().padLeft(2, '0')}';
+  }
+
+  static String fmtDay(int? ms) {
+    if (ms == null || ms <= 0) return '';
+    final t = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).subtract(const Duration(hours: 4));
+    return '${t.month}/${t.day}/${(t.year % 100).toString().padLeft(2, '0')}';
+  }
+
+  static String periodRange(int? startMs, int? endMs) {
+    final a = fmtDay(startMs);
+    final b = fmtDay(endMs);
+    if (a.isEmpty && b.isEmpty) return '';
+    if (b.isEmpty) return 'from $a';
+    if (a.isEmpty) return 'until $b';
+    return '$a – $b';
   }
 
   static String fmtBytes(num v) {
@@ -37,11 +53,23 @@ class MyUsageCard extends StatelessWidget {
       builder: (context, usageSnap) {
         final u = usageSnap.data?.data();
         if (u == null) return const SizedBox.shrink();
-        final months = (u['months'] is Map) ? Map<String, dynamic>.from(u['months'] as Map) : <String, dynamic>{};
-        final b = (months[currentMonth()] is Map) ? Map<String, dynamic>.from(months[currentMonth()] as Map) : <String, dynamic>{};
-        final down = (b['downBytes'] as num?) ?? 0;
-        final up = (b['upBytes'] as num?) ?? 0;
+        final hasPeriod = u['periodId'] != null || u['periodStartMs'] != null || u['periodDownBytes'] != null;
+        num down;
+        num up;
+        if (hasPeriod) {
+          down = (u['periodDownBytes'] as num?) ?? 0;
+          up = (u['periodUpBytes'] as num?) ?? 0;
+        } else {
+          final months = (u['months'] is Map) ? Map<String, dynamic>.from(u['months'] as Map) : <String, dynamic>{};
+          final b = (months[currentMonth()] is Map) ? Map<String, dynamic>.from(months[currentMonth()] as Map) : <String, dynamic>{};
+          down = (b['downBytes'] as num?) ?? 0;
+          up = (b['upBytes'] as num?) ?? 0;
+        }
         final total = down + up;
+        final range = periodRange((u['periodStartMs'] as num?)?.toInt(), (u['periodEndMs'] as num?)?.toInt());
+        final countedFrom = (u['periodCountedFromMs'] as num?)?.toInt();
+        final startMs = (u['periodStartMs'] as num?)?.toInt();
+        final backfillNote = (hasPeriod && countedFrom != null && startMs != null && countedFrom > startMs + 60000);
         return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: custRef.snapshots(),
           builder: (context, custSnap) {
@@ -62,12 +90,21 @@ class MyUsageCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('My usage this month', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  Text(hasPeriod ? 'My usage this period' : 'My usage this month', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                   const SizedBox(height: 8),
                   Text(
                     limitBytes > 0 ? '${fmtBytes(total)} of ${limitGb.toString()} GB' : fmtBytes(total),
                     style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: GnTheme.cyan),
                   ),
+                  if (range.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(range, style: const TextStyle(color: Colors.white70)),
+                  ],
+                  if (backfillNote) ...[
+                    const SizedBox(height: 4),
+                    Text('Counted from ${fmtDay(countedFrom)} (earlier use in this window was not backfilled).',
+                        style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                  ],
                   if (limitBytes > 0) ...[
                     const SizedBox(height: 8),
                     LinearProgressIndicator(value: pct, minHeight: 8, borderRadius: BorderRadius.circular(8)),

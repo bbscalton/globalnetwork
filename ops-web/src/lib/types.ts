@@ -48,13 +48,18 @@ export type Customer = {
   omadaClientMac?: string
   cpeMac?: string
   er7206UserName?: string
-  /** Desk-side monthly data limit in GB (null/0 = none). */
+  /** Desk-side data limit in GB for the current paid window (null/0 = none). */
   dataLimitGb?: number | null
   dataLimitAction?: 'alert' | 'throttle' | 'cap'
   dataThrottleUpKbps?: number
   dataThrottleDownKbps?: number
   /** Last router speed change (VPS worker). */
   er7206Speed?: { throttled: boolean; upBand?: string; downBand?: string; atMs?: number; jobId?: string; auto?: boolean }
+  /** Current paid usage window (set on payment/renewal/extension). */
+  usagePeriodId?: string | null
+  usagePeriodStartMs?: number | null
+  usagePeriodEndMs?: number | null
+  usagePeriodKind?: string | null
 }
 
 export type Plan = {
