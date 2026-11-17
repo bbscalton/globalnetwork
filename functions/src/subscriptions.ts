@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { CALLABLE, CURRENCY, DAY_EXTENSION_RATE_XCD, DEFAULT_ORG_ID, DEFAULT_PLANS, FieldValue, db, formatAntiguaDate, paidUntilAfterGrant, requireManager, requireOwner, requirePosStaff, sendToOwners, sendToToken, writeAudit, type StaffSession } from "./context";
+import { usagePeriodFields } from "./usagePeriod";
 import { enqueueEr7206Action, enqueueEr7206Create, enqueueEr7206Enable } from "./er7206Queue";
 import { customerByUid, customersWithEmail, customersWithPhone, normalizeEmail, normalizePhone, pickCustomerKeeper } from "./customerRecords";
 
@@ -309,6 +310,7 @@ export const extendSubscription = onCall(CALLABLE, async (request) => {
       approvalStatus: "approved",
       approvedAtMs: now,
       updatedAtMs: now,
+      ...usagePeriodFields(now, paidUntilMs, stillActive ? "renewal" : "reactivation"),
     });
     tx.set(ref.collection("payments").doc(), {
       amount: feeAmount,
@@ -408,6 +410,7 @@ export const grantDayExtension = onCall(CALLABLE, async (request) => {
       approvalStatus: "approved",
       approvedAtMs: now,
       updatedAtMs: now,
+      ...usagePeriodFields(now, paidUntilMs, "extension"),
     };
     if (paidNow) {
       patch.paidAmount = prevPaid + charge;
@@ -585,6 +588,9 @@ export const collectPayment = onCall(CALLABLE, async (request) => {
       }
       customerUpdate.approvalStatus = "approved";
       customerUpdate.approvedAtMs = now;
+      const stillActive = (statusNow === "active" || statusNow === "grace") && prevUntil > now;
+      const periodKind = !stillActive ? "reactivation" : (planCollected >= feeAmount ? "renewal" : "extension");
+      Object.assign(customerUpdate, usagePeriodFields(now, paidUntilMs, periodKind));
     }
     
     tx.update(ref, customerUpdate);
@@ -1041,6 +1047,7 @@ export const processExtensionRequest = onCall(CALLABLE, async (request) => {
     pendingExtensionDays: null,
     pendingExtensionTotal: null,
     updatedAtMs: now,
+    ...usagePeriodFields(now, paidUntilMs, "extension"),
   };
   
   if (paidNow) {

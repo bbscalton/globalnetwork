@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Customer } from './lib/types'
-import { GB, fmtBytes, monthUsed, observeUsage, setDataLimit, setRouterSpeed, type CustomerUsage, type DataLimitAction } from './lib/usage'
+import { GB, fmtBytes, periodUsed, periodHistory, fmtPeriodRange, observeUsage, setDataLimit, setRouterSpeed, type CustomerUsage, type DataLimitAction } from './lib/usage'
 import { fmtWhen } from './lib/desk'
 import { runRouterCommand, useRouterLocks } from './lib/routerLock'
 
@@ -42,7 +42,7 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
     setAction(customer.dataLimitAction ?? 'alert')
   }, [customer.dataLimitGb, customer.dataLimitAction])
 
-  const used = monthUsed(usage ?? undefined)
+  const used = periodUsed(usage ?? undefined)
   const limitBytes = (customer.dataLimitGb ?? 0) > 0 ? (customer.dataLimitGb as number) * GB : 0
   const pct = limitBytes ? Math.min(100, Math.round((used.total / limitBytes) * 100)) : 0
   const over = limitBytes > 0 && used.total >= limitBytes
@@ -59,7 +59,7 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
 
   return (
     <div className="data-usage">
-      <h3 style={{ margin: '0 0 0.4rem' }}>Data this month</h3>
+      <h3 style={{ margin: '0 0 0.4rem' }}>Data this period</h3>
       {usage ? (
         <>
           <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>
@@ -73,9 +73,31 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
             </div>
           )}
           <div className="muted tiny">
-            ↓ {fmtBytes(used.down)} · ↑ {fmtBytes(used.up)} · IP {usage.ip || 'offline'} · updated {fmtWhen(usage.updatedAtMs ?? 0)}
-            {usage.trackingSinceMs ? ` · tracking since ${fmtWhen(usage.trackingSinceMs)}` : ''}
+            {fmtPeriodRange(usage.periodStartMs, usage.periodEndMs) || (used.fallback === 'month' ? 'Calendar month (period sync pending)' : 'Current paid window')}
+            {usage.periodKind ? ` · ${usage.periodKind}` : ''}
+            {usage.periodStatus === 'closed' ? ` · ended${usage.periodEndedReason ? ` (${usage.periodEndedReason})` : ''}` : ''}
           </div>
+          <div className="muted tiny">
+            ↓ {fmtBytes(used.down)} · ↑ {fmtBytes(used.up)} · IP {usage.ip || 'offline'} · updated {fmtWhen(usage.updatedAtMs ?? 0)}
+            {usage.periodCountedFromMs && usage.periodStartMs && usage.periodCountedFromMs > usage.periodStartMs + 60_000
+              ? ` · counted from ${fmtWhen(usage.periodCountedFromMs)} (usage before that in this window was not backfilled)`
+              : ''}
+          </div>
+          {periodHistory(usage).length > 1 && (
+            <details className="muted tiny" style={{ marginTop: '0.4rem' }}>
+              <summary>Previous paid windows</summary>
+              <ul style={{ margin: '0.3rem 0 0', paddingLeft: '1.1rem' }}>
+                {periodHistory(usage).map((w) => (
+                  <li key={w.id}>
+                    {fmtPeriodRange(w.startMs, w.endMs) || w.id}
+                    {w.kind ? ` · ${w.kind}` : ''}
+                    {` · ${fmtBytes((w.downBytes ?? 0) + (w.upBytes ?? 0))}`}
+                    {w.status === 'closed' && w.endedReason ? ` · ${w.endedReason}` : (w.id === usage.periodId ? ' · current' : '')}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </>
       ) : (
         <div className="muted tiny">No usage reported yet (router sync runs every 5 min).</div>
@@ -96,7 +118,7 @@ export function DataUsagePanel({ customer, isOwner }: { customer: Customer; isOw
               return { msg: 'Data limit saved' }
             })
           }}>
-            <label>Monthly limit (GB)<input inputMode="decimal" value={limit} placeholder="none" onChange={(e) => setLimit(e.target.value)} /></label>
+            <label>Period limit (GB)<input inputMode="decimal" value={limit} placeholder="none" onChange={(e) => setLimit(e.target.value)} /></label>
             <label>At the limit
               <select value={action} onChange={(e) => setAction(e.target.value as DataLimitAction)}>
                 <option value="alert">Show on desk only</option>
